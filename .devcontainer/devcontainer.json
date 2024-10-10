@@ -1,0 +1,8 @@
+{
+  "name": "tooling",
+  "dockerComposeFile": ["${localWorkspaceFolder}/compose-dev.yaml"],
+  "service": "tooling",
+  "workspaceFolder": "/home/devos/workspace",
+  "postCreateCommand": "${containerWorkspaceFolder}/scripts/config-devos.sh",
+  "remoteUser": "devos"
+}

@@ -1,0 +1,50 @@
+# Add 'repo' label to any root file changes
+repo:
+  - changed-files:
+      - any-glob-to-any-file: "*"
+
+# Add 'github-actions' label to any changes in the '.github' directory
+github-actions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/actions/*
+          - .github/actions/*/**
+          - .github/auto_assign.yml
+          - .github/auto_assign.yml/**
+          - .github/dependabot.yml
+          - .github/dependabot.yml/**
+          - .github/workflows/*
+          - .github/workflows/*/**
+
+# Add 'devcontainer' label to any changes in the '.devcontainer' directory
+# Add 'devcontainer' label to any changes in the 'docker-compose.yml' file
+devcontainer:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .devcontainer/*
+          - .devcontainer/*/**
+          - .devcontainer/devcontainer.json
+          - .devcontainer/devcontainer.json/**
+          - docker-compose.yml
+          - docker-compose.yml/**
+
+# Add 'config' label to any changes in the 'config' directory
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - config/*
+          - config/**
+
+# Add 'scripting' label to any changes in the 'scripts' directory
+scripting:
+  - changed-files:
+      - any-glob-to-any-file:
+          - scripts/*
+          - scripts/*/**
+
+# Add 'tooling' label to any changes in the 'build' directory
+tooling:
+  - changed-files:
+      - any-glob-to-any-file:
+          - tools/*
+          - tools/**

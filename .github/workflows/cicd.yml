@@ -1,0 +1,57 @@
+name: Continuos Integration
+
+on:
+  - push
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions: read-all
+
+jobs:
+  bot:
+    uses: anselmes/cicd/.github/workflows/bot.yml@3442bdcc91473c288c131eea70560342c63790ce # main https://github.com/anselmes/cicd/commit/3442bdcc91473c288c131eea70560342c63790ce
+    permissions:
+      issues: write
+      pull-requests: write
+      repository-projects: write
+
+  trivy:
+    uses: anselmes/cicd/.github/workflows/trivy.yml@3442bdcc91473c288c131eea70560342c63790ce # main https://github.com/anselmes/cicd/commit/3442bdcc91473c288c131eea70560342c63790ce
+    permissions:
+      actions: read
+      attestations: read
+      checks: read
+      contents: write
+      deployments: read
+      discussions: read
+      id-token: write
+      issues: read
+      packages: read
+      pages: read
+      pull-requests: read
+      repository-projects: read
+      security-events: write
+      statuses: read
+
+  scorecard:
+    uses: anselmes/cicd/.github/workflows/scorecard.yml@3442bdcc91473c288c131eea70560342c63790ce # main https://github.com/anselmes/cicd/commit/3442bdcc91473c288c131eea70560342c63790ce
+    permissions:
+      actions: read
+      attestations: read
+      checks: read
+      contents: read
+      deployments: read
+      discussions: read
+      id-token: write
+      issues: read
+      packages: read
+      pages: read
+      pull-requests: read
+      repository-projects: read
+      security-events: write
+      statuses: read
+
+  # sonarqube:
+  #   uses: anselmes/cicd/.github/workflows/sonarqube.yml@3442bdcc91473c288c131eea70560342c63790ce # main https://github.com/anselmes/cicd/commit/3442bdcc91473c288c131eea70560342c63790ce

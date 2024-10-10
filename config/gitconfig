@@ -1,0 +1,90 @@
+[alias]
+  c = commit -am
+  up = pull
+  p = push
+  s = status -s
+  df = diff --color --color-words --abbrev
+  lg = log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --
+  ignore = "!gi() { curl -L -s https://www.gitignore.io/api/$@; }; gi"
+
+[color]
+  ui = always
+
+[color "branch"]
+  current = yellow reverse
+  local = yellow
+  remote = green
+
+[color "diff"]
+  meta = yellow bold
+  frag = magenta bold
+  old = red bold
+  new = green bold
+
+[color "status"]
+  added = yellow
+  changed = green
+  untracked = cyan
+
+;[commit]
+;  gpgsign = true
+
+[core]
+  excludesfiles = ~/.gitignore
+  attributesfile = ~/.gitattributes
+  editor = vi
+  packedGitLimit = 512m
+  packedGitWindowsSite = 512m
+  ;autocrlf = true
+  ;compression = 0
+
+;[gitreview]
+;    usename = ""
+
+;[gpg]
+;  program = gpg
+
+; [http]
+;     proxy = ""
+;
+; [https]
+;     proxy = ""
+
+[init]
+  defaultBranch = main
+
+[merge]
+  log = true
+
+[pack]
+  deltaCacheSize = 2047m
+  packedSizeLimit = 2047m
+  windowMemory = 2047m
+
+[pull]
+  rebase = true
+  ;ff = only
+
+[tag]
+  forceSignAnnotated = true
+
+[url "git@github.com:"]
+  insteadOf = "gh:"
+  pushInsteadOf = "github:"
+  pushInsteadOf = "git://github.com/"
+
+[url "git://github.com/"]
+  insteadOf = "github:"
+
+[url "git@gist.github.com:"]
+  insteadOf = "gst:"
+  pushInsteadOf = "gist:"
+  pushInsteadOf = "git://gist.github.com/"
+
+[url "git://gist.github.com/"]
+  insteadOf = "gist:"
+
+[user]
+  name = ""
+  email = ""
+  ;signingkey= ""
