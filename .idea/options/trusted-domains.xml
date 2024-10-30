@@ -1,7 +1,0 @@
-<application>
-  <component name="trustedDomains">
-    <option name="trustedDomains">
-      <option value="plugins.jetbrains.com" />
-    </option>
-  </component>
-</application>

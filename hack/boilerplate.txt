@@ -1,1 +1,6 @@
-SPDX-License-Identifier: GPL-3.0
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0
+
+DIR="$(dirname $(realpath $(dirname "${0}")))"
+. "${DIR}/scripts/aliases.sh"
+. "${DIR}/scripts/environment.sh"
