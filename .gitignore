@@ -157,5 +157,11 @@ fabric.properties
 *.vsix
 
 # Project files
-.cache
 .env
+.gitconfig
+.bashrc
+.zshrc
+
+.idea/
+.ssh/
+.vscode/
