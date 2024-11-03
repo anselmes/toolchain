@@ -1,0 +1,60 @@
+binaries:
+  - name: kubectl
+    url: https://dl.k8s.io/release/v${version}/bin/${os:-linux}/${arch}/kubectl
+    version: 1.31.1
+  - name: helm
+    checksum: https://get.helm.sh/helm-v3.16.2-darwin-arm64.tar.gz.sha256sum
+    url: https://get.helm.sh/helm-v${version}-${os}-${arch}.tar.gz
+    version: 3.16.2
+  - name: yq
+    url: https://github.com/mikefarah/yq/releases/download/v${version}/yq_${os:-linux}_${arch}
+    version: 4.44.3
+packages:
+  group:
+    - name: docker
+      keyring: https://download.docker.com/${os:-linux}/ubuntu/gpg
+      repo: https://download.docker.com/${os:-linux}/ubuntu
+      type: apt
+      add:
+        - containerd.io
+        - docker-buildx-plugin
+        - docker-ce-cli
+        - docker-ce
+        - docker-compose-plugin
+      remove:
+        - containerd
+        - docker-compose
+        - docker-doc
+        - docker.io
+        - podman-docker
+        - runc
+plugins:
+  kubernetes:
+    krew:
+      - access-matrix
+      - ca-cert
+      - cert-manager
+      - cilium
+      - config-import
+      - ctx
+      - debug-shell
+      - deprecations
+      - df-pv
+      - hns
+      - images
+      - minio
+      - node-shell
+      - ns
+      - nsenter
+      - oidc-login
+      - open-svc
+      - openebs
+      - pod-shell
+      - rabbitmq
+      - rook-ceph
+      - view-cert
+      - view-secret
+      - view-serviceaccount-kube- config
+      - view-utilization
+      - view-webhook
+      - virt

@@ -10,7 +10,6 @@ if [[ -n $(command -v "apt-get") ]]; then
     "curl"
     "git"
     "gnupg2"
-    "shfmt"
     "zsh"
   )
 
