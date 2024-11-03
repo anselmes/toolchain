@@ -1,0 +1,13 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: default-gw-cert
+  namespace: kube-system
+spec:
+  secretName: default-gw-tls
+  dnsNames:
+    - "*.local"
+  issuerRef:
+    kind: ClusterIssuer
+    name: self-signed-ca-issuer
