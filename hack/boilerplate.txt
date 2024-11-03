@@ -1,6 +1,14 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0
+# source scripts/alias.sh
+# source scripts/environment.sh
 
-DIR="$(dirname $(realpath $(dirname "${0}")))"
-. "${DIR}/scripts/aliases.sh"
-. "${DIR}/scripts/environment.sh"
+# export $(yq --output-format shell '.' config/versions.yaml | tr -d "'")
+
+export os="$(uname | tr '[:upper:]' '[:lower:]')"
+export arch="$(uname -m)"
+
+echo """
+os: ${os}
+arch: ${arch}
+"""

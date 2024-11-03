@@ -28,6 +28,11 @@ if ! ssh-add -l >>/dev/null; then
 fi
 
 # Functions
+get_env_var() {
+  local key="${1}"
+  env | awk -F "=" "/${key}/ { print \$2 }"
+}
+
 cache() {
   CACHE_DIR=".cache"
 

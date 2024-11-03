@@ -157,11 +157,10 @@ fabric.properties
 *.vsix
 
 # Project files
+.*
 .env
-.gitconfig
-.bashrc
-.zshrc
+!.devcontainer/
+!.github/
+!.trunk/
+!example.env
 
-.idea/
-.ssh/
-.vscode/
