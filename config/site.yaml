@@ -1,0 +1,14 @@
+---
+spec:
+  config:
+    pki:
+      dir: /tmp/pki
+      ca:
+        bundle: /tmp/ca.pfx
+        days: 3065
+        subj: /CN=root-ca
+        key:
+          file: /tmp/pki/ca.key
+        cert:
+          file: /tmp/pki/ca.crt
+status: {}

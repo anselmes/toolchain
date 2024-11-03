@@ -1,6 +1,5 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0
-
 source scripts/aliases.sh
 source scripts/environment.sh
 
