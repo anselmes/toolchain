@@ -1,0 +1,58 @@
+---
+apiVersion: k0s.k0sproject.io/v1beta1
+kind: Cluster
+metadata:
+  name: kubernetes
+spec:
+  api:
+    sans:
+      - kubernetes.local
+  network:
+    provider: custom
+  featureGates:
+    - name: UserNamespacesSupport
+      enabled: true
+  extensions:
+    helm:
+      charts:
+        - name: cilium
+          chartname: cilium/cilium
+          namespace: kube-system
+          order: 1
+          version: 1.16.2
+          values: |
+            kubeProxyReplacement: true
+            l2announcements:
+              enabled: true
+            gatewayAPI:
+              enabled: true
+            operator:
+              replicas: 1
+        - name: openebs
+          chartname: openebs/openebs
+          namespace: kube-system
+          order: 1
+          version: 3.10.0
+          values: |
+            analytics:
+              enabled: false
+            localprovisioner:
+              hostpathClass:
+                isDefaultClass: true
+        - name: cert-manager
+          chartname: jetstack/cert-manager
+          namespace: cert-manager
+          order: 2
+          version: v1.16.0
+          values: |
+            crds:
+              enabled: true
+      repositories:
+        - name: cilium
+          url: https://helm.cilium.io/
+        - name: jetstack
+          url: https://charts.jetstack.io/
+        - name: openebs
+          url: https://openebs.github.io/charts/
+  telemetry:
+    enabled: false

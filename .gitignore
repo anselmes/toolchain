@@ -162,4 +162,6 @@ fabric.properties
 !.devcontainer/
 !.github/
 !.trunk/
+!.*.yaml
+!.*.json
 !example.env
