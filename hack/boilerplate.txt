@@ -3,10 +3,10 @@
 # source scripts/alias.sh
 # source scripts/environment.sh
 
-# export $(yq --output-format shell '.' config/versions.yaml | tr -d "'")
-
 export os="$(uname | tr '[:upper:]' '[:lower:]')"
 export arch="$(uname -m)"
+
+# export $(getenv <(yq '.' "${CONFIG}"))
 
 echo """
 os: ${os}
