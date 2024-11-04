@@ -28,9 +28,25 @@ if ! ssh-add -l >>/dev/null; then
 fi
 
 # Functions
-get_env_var() {
+getenv() {
+  local source="${1}"
+  yq '.. |(
+    ( select(kind == "scalar" and parent | kind != "seq") | (path | join("_")) + "=''" + . + "''"),
+    ( select(kind == "seq") | (path | join("_")) + "=(" + (map("''" + . + "''") | join(",")) + ")")
+  )' "${source}"
+}
+
+getenval() {
+  local source="${1}"
+  local key="${2}"
+  local delimiter="${3:-=}"
+  printf "${source}" | grep "${key}" | awk -F "${delimiter}" '{ print $2 }'
+}
+
+getenvarval() {
   local key="${1}"
-  env | awk -F "=" "/${key}/ { print \$2 }"
+  getenval $(env) "${key}" "="
+  # env | awk -F "=" "/${key}/ { print \$2 }"
 }
 
 cache() {

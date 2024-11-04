@@ -1,19 +1,38 @@
-binaries:
-  - name: kubectl
-    url: https://dl.k8s.io/release/v${version}/bin/${os:-linux}/${arch}/kubectl
-    version: 1.31.1
+binary:
   - name: helm
-    checksum: https://get.helm.sh/helm-v3.16.2-darwin-arm64.tar.gz.sha256sum
     url: https://get.helm.sh/helm-v${version}-${os}-${arch}.tar.gz
     version: 3.16.2
+    type: archive
+    archs:
+      - amd64
+      - arm64
+  - name: kubectl
+    url: https://dl.k8s.io/release/v${version}/bin/${os}/${arch}/kubectl
+    version: 1.31.1
+    type: executable
+    archs:
+      - amd64
+      - arm64
   - name: yq
-    url: https://github.com/mikefarah/yq/releases/download/v${version}/yq_${os:-linux}_${arch}
+    type: executable
+    url: https://github.com/mikefarah/yq/releases/download/v${version}/yq_${os}_${arch}
     version: 4.44.3
-packages:
+    archs:
+      - amd64
+      - arm64
+package:
+  add: []
+  # - name: ""
+  #   keyring: ""
+  #   repo: ""
+  #   type: apt
+  remove: []
+  # - name: containerd
+  #   type: apt
   group:
     - name: docker
-      keyring: https://download.docker.com/${os:-linux}/ubuntu/gpg
-      repo: https://download.docker.com/${os:-linux}/ubuntu
+      keyring: https://download.docker.com/${os}/ubuntu/gpg
+      repo: https://download.docker.com/${os}/ubuntu
       type: apt
       add:
         - containerd.io
@@ -28,9 +47,10 @@ packages:
         - docker.io
         - podman-docker
         - runc
-plugins:
-  kubernetes:
-    krew:
+plugin:
+  - name: kubectl
+    installer: krew
+    list:
       - access-matrix
       - ca-cert
       - cert-manager
@@ -54,7 +74,6 @@ plugins:
       - rook-ceph
       - view-cert
       - view-secret
-      - view-serviceaccount-kube- config
       - view-utilization
       - view-webhook
       - virt
