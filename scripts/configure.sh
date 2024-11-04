@@ -1,6 +1,5 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0
-
 source scripts/aliases.sh
 source scripts/environment.sh
 
@@ -10,7 +9,6 @@ if [[ -n $(command -v "apt-get") ]]; then
     "curl"
     "git"
     "gnupg2"
-    "shfmt"
     "zsh"
   )
 

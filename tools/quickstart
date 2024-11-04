@@ -1,0 +1,39 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0
+
+set -eo pipefail
+
+export KUBECONFIG=hack/kubeconfig.yaml
+
+export IPADDR="${1:-127.0.0.1}"
+export SSHKEY="${2:-~/.ssh_rsa}"
+
+# generate config
+export config="$(yq '
+  .spec.k0s.config = load("hack/cluster/config.yaml") |
+  .spec.hosts[].ssh.address = env(IPADDR) |
+  .spec.hosts[].ssh.keyPath = env(SSHKEY) |
+  del(.spec.hosts[].installFlags)' hack/cluster/cluster.yaml | sed '/#/d')"
+
+# create cluster
+k0sctl apply --config /tmp/cluster.yaml
+
+# get kubeconfig
+k0sctl kubeconfig --config /tmp/cluster.yaml >"${KUBECONFIG}"
+
+# apply crds
+kustomize build deployment/crd | kubectl apply -f -
+
+# apply manifests
+kustomize build "${DIR}/hack" | kubectl apply -f -
+
+# get lb
+CIDR="$(yq 'select(.metadata.name == "default-ip-pool")|.spec.blocks[].cidr' hack/manifest/lb.yaml)"
+VIP="$(yq 'select(.metadata.name == "default-ip-pool")|.spec.blocks[].cidr' hack/manifest/lb.yaml | cut -d '/' -f 1 | sed 's/.$/1/')"
+sudo route -n add -net "${CIDR}" "${IPADDR}"
+
+echo """
+Cluster is ready:
+- CIDR=${CIDR}
+- VIP=${VIP}
+"""
