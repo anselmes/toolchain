@@ -1,0 +1,15 @@
+network:
+  version: 2
+  ethernets:
+    oam:
+      accept-ra: true
+      dhcp4: ${networks_interfaces_oam_address_ipv4_dhcp}
+      dhcp6: ${networks_interfaces_oam_address_ipv6_dhcpv6}
+      mtu: 1500
+      set-name: oam
+      match:
+        macaddress: null
+      dhcp4-overrides:
+        route-metric: 0
+      dhcp6-overrides:
+        route-metric: 0
