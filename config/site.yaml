@@ -1,43 +1,25 @@
 ---
-spec:
-  domain: local
-  dir: /tmp
+metadata:
+  name: skiff
+site:
+  domain: labos.local
   config:
-    ssh:
-      key:
-        file: ${site_dir}/id_ed25519
-    gpg:
-      dir: ${site_dir}/.gnupg
     pki:
-      dir: ${site_dir}/pki
       ca:
-        bundle: ${site_dir}/ca.pfx
-        days: "3065"
-        subj: /CN=root-ca
-        key:
-          file: ${site_dir}/pki/ca.key
-        cert:
-          file: ${site_dir}/pki/ca.crt
+        days: 3065
+        subj: /CN=skiff-root-ca
   service:
     libvirt:
       enabled: true
-      cloudinit: ${libvirt_dir}/boot
-      emulator: $(command -v ${qemu-system-${arch})
-      firmware: ${firmware_dir}/edk2-${arch}-code.fd
-      images: ${libvirt_dir}/images
   vm:
     - name: skiff
-      arch: null
-      cpu: null
-      image: null
-      memory: null
-      os:
-        name: ubuntu
-        version: 24.04
-        url: http://ubuntu.com
+      osinfo: ${os_url}/${os_name}/${os_version}
+      arch: ${arch}
+      cpu: ${cpu}
+      image: ${image}
+      memory: ${memory}
       cloudinit:
         enabled: true
-        file: ${site_dir}/user-data
       networks:
         interfaces:
           oam:
@@ -47,4 +29,15 @@ spec:
                 dhcp: true
               ipv6:
                 dhcpv6: true
-status: {}
+status:
+  gpg_dir: ${site_dir}/.gnupg
+  libvirt_cloudinit_dir: ${libvirt_dir}/boot
+  libvirt_emulator: $(command -v ${qemu-system-${arch})
+  libvirt_firmware_file: ${firmware_dir}/edk2-${arch}-code.fd
+  libvirt_image_dir: ${libvirt_dir}/images
+  pki_ca_bundle: ${site_dir}/ca.pfx
+  pki_ca_cert_file: ${site_dir}/pki/ca.crt
+  pki_ca_key_file: ${site_dir}/pki/ca.key
+  pki_dir: ${site_dir}/pki
+  site_dir: /tmp/skiff
+  ssh_key_file: ${site_dir}/id_ed25519
