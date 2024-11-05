@@ -1,0 +1,12 @@
+network:
+  version: 2
+  ethernets:
+    swp1:
+      accept-ra: false
+      dhcp4: false
+      dhcp6: false
+      mtu: 9000
+      optional: true
+      set-name: swp1
+      match:
+        macaddress: null

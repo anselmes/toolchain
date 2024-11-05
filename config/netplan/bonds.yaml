@@ -1,0 +1,12 @@
+network:
+  version: 2
+  bonds:
+    bond0:
+      accept-ra: true
+      dhcp4: true
+      dhcp6: true
+      mtu: 9000
+      optional: true
+      parameters:
+        mode: balance-alb
+        mii-monitor-interval: 100
