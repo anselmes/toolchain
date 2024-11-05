@@ -1,14 +1,50 @@
 ---
 spec:
+  domain: local
+  dir: /tmp
   config:
+    ssh:
+      key:
+        file: ${site_dir}/id_ed25519
+    gpg:
+      dir: ${site_dir}/.gnupg
     pki:
-      dir: /tmp/pki
+      dir: ${site_dir}/pki
       ca:
-        bundle: /tmp/ca.pfx
-        days: 3065
+        bundle: ${site_dir}/ca.pfx
+        days: "3065"
         subj: /CN=root-ca
         key:
-          file: /tmp/pki/ca.key
+          file: ${site_dir}/pki/ca.key
         cert:
-          file: /tmp/pki/ca.crt
+          file: ${site_dir}/pki/ca.crt
+  service:
+    libvirt:
+      enabled: true
+      cloudinit: ${libvirt_dir}/boot
+      emulator: $(command -v ${qemu-system-${arch})
+      firmware: ${firmware_dir}/edk2-${arch}-code.fd
+      images: ${libvirt_dir}/images
+  vm:
+    - name: skiff
+      arch: null
+      cpu: null
+      image: null
+      memory: null
+      os:
+        name: ubuntu
+        version: 24.04
+        url: http://ubuntu.com
+      cloudinit:
+        enabled: true
+        file: ${site_dir}/user-data
+      networks:
+        interfaces:
+          oam:
+            address:
+              mac: ba:be:fa:ce:00:00
+              ipv4:
+                dhcp: true
+              ipv6:
+                dhcpv6: true
 status: {}
