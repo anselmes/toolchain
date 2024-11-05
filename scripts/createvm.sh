@@ -4,12 +4,15 @@
 source scripts/environment.sh
 
 create_vm() {
+  export vm_id="$(uuidgen)"
   export name="${1}"
   config="${2}"
 
   [[ -z "${name}" ]] && echo "name is required" && exit 1
   [[ -z "${config}" ]] && echo "config is required" && exit 1
-  export site_dir="$(yq '.site.dir' "${config}")"
+
+  export site_dir="$(yq '.status.site_dir' "${config}")"
+  export $(getenv <(yq '.site.vm[] | select(.name == env(name))' "${config}"))
 
   [[ -z "${arch}" ]] && export arch="$(uname -m)"
   case "${arch}" in
@@ -19,9 +22,7 @@ create_vm() {
   *) ;;
   esac
 
-  export $(getenv <(yq '.site.service | select(.libvirt)' "${config}") | envsubst)
-  export $(getenv <(yq '.site.vm[] | select(.name == env(name))' "${config}") | envsubst)
-  export vm_id="$(uuidgen)"
+  export $(yq --output-format shell '.status' "${config}" | tr -d "'")
 
   if [[ -z "${vm_type}" ]]; then
     case "$(uname -s)" in
@@ -39,8 +40,9 @@ create_vm() {
     esac
   fi
 
-  user_data="${cloudinit_file}"
+  # user_data="${cloudinit_file}"
   network_config="${site_dir}/network-config"
+  user_data="${site_dir}/user-data"
   vm_file="${site_dir}/vm-${name}.xml"
 
   stat "${vm_file}" >/dev/null 2>&1 ||
@@ -57,17 +59,19 @@ create_vm() {
     ' config/netplan/default.yaml | tr -d '"' >"${network_config}"
 
     # user-data
-    stat "${cloudinit_file}" >/dev/null 2>&1 ||
-      printf "#cloud-config" >"${cloudinit_file}"
+    if ! stat "${user_data}" >/dev/null 2>&1; then
+      pubkey="$(cat "${ssh_key_file}.pub")"
+      printf "#cloud-config\nssh_authorized_keys: \n  - ${pubkey}\n" >"${user_data}"
+    fi
 
-    if [[ -n "${libvirt_cloudinit}" ]]; then
-      export vm_cloudinit="${libvirt_cloudinit}"
+    if [[ -n "${libvirt_cloudinit_dir}" ]]; then
+      export vm_cloudinit="${libvirt_cloudinit_dir}/cloudinit.iso"
     else
       export vm_cloudinit="${site_dir}/cloudinit.iso"
     fi
 
     stat "${vm_cloudinit}" >/dev/null 2>&1 ||
-      createiso "${vm_cloudinit}" /tmp/meta-data "${cloudinit_file}" "${network_config}"
+      createiso "${vm_cloudinit}" /tmp/meta-data "${user_data}" "${network_config}"
 
     # update vm config
     yq --inplace '. |
@@ -76,10 +80,10 @@ create_vm() {
   fi
 
   # create volume
-  if [[ -n "${libvirt_images}" ]]; then
-    export vol="${libvirt_images}/${name}.qcow2"
+  if [[ -n "${libvirt_image_dir}" ]]; then
+    export vol="${libvirt_image_dir}/${name}.qcow2"
   else
-    export vol="/tmp/${name}.qcow2"
+    export vol="${site_dir}/${name}.qcow2"
   fi
   if [[ -n "${image}" ]]; then
     stat "${vol}" >/dev/null 2>&1 ||

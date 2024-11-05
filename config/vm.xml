@@ -2,7 +2,7 @@
   <vcpu placement="static">2</vcpu>
   <metadata>
     <libosinfo xmlns="http://libosinfo.org/xmlns/libvirt/domain/1.0">
-      <os id="${os_url}/${os_name}/${os_version}"/>
+      <os id="${osinfo}"/>
     </libosinfo>
   </metadata>
   <os>
@@ -37,7 +37,7 @@
   </devices>
   <commandline xmlns="http://libvirt.org/schemas/domain/qemu/1.0">
     <arg value="-drive"/>
-    <arg value="id=hd0,if=pflash,readonly=on,format=raw,file=${libvirt_firmware}"/>
+    <arg value="id=hd0,if=pflash,readonly=on,format=raw,file=${libvirt_firmware_file}"/>
     <arg value="-drive"/>
     <arg value="file=${vol},id=hd1,if=none,discard=unmap,format=qcow2"/>
     <arg value="-device"/>
