@@ -75,6 +75,7 @@ if [[ -d modules/tooling ]]; then
   mkdir -p config hack scripts tools
 
   cp -f modules/tooling/.gitignore .
+  cp -f modules/tooling/.devcontainer/devcontainer.json .devcontainer/devcontainer.json
 
   cd config
   ln -sf ../modules/tooling/config/* .
