@@ -167,5 +167,6 @@ fabric.properties
 !.github/
 !.gitignore
 !.gitmodules
+!.shellcheckrc
 !.trunk/
 !example.env
