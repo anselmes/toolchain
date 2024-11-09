@@ -159,9 +159,13 @@ fabric.properties
 # Project files
 .*
 .env
-!.devcontainer/
-!.github/
-!.trunk/
-!.*.yaml
 !.*.json
+!.*.yaml
+!.commitlintrc
+!.devcontainer/
+!.editorconfig
+!.github/
+!.gitignore
+!.gitmodules
+!.trunk/
 !example.env
