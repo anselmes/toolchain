@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0
-source scripts/aliases.sh
-source scripts/environment.sh
+# source scripts/aliases.sh
+# source scripts/environment.sh
 
 # dependencies
 if [[ -n $(command -v "apt-get") ]]; then
@@ -31,16 +31,16 @@ if [[ -n $(command -v "usermod") ]]; then
 
   # note: always set the user to "devcontainer" if it exists
   if [[ "devcontainer" == "$(whoami)" ]]; then
-    USER="devcontainer"
+    user="devcontainer"
   else
-    USER="$(whoami)"
+    user="$(whoami)"
   fi
 
   for g in "${groups[@]}"; do
-    sudo usermod -aG "${g}" "${USER}"
+    sudo usermod -aG "${g}" "${user}"
   done
 
-  id "${USER}"
+  id "${user}"
 fi
 
 # environment
@@ -50,16 +50,7 @@ if [[ ! -d "${HOME}/.oh-my-zsh" ]]; then
   rm -f /tmp/ohmyzsh-install.sh
 fi
 
-ln -sf \
-  modules/dotfiles/.bashrc \
-  modules/dotfiles/.zshrc \
-  modules/dotfiles/.commitlintrc \
-  modules/dotfiles/.idea \
-  modules/dotfiles/.vscode \
-  .trunk/configs/.* \
-  .
-
-ITEMS=(
+items=(
   "modules/dotfiles/.devcontainer"
   "modules/dotfiles/.editorconfig"
   "modules/dotfiles/.gitignore"
@@ -67,14 +58,46 @@ ITEMS=(
   "modules/dotfiles/.trunk"
   "modules/dotfiles/compose-dev.yaml"
 )
-for ITEM in "${ITEMS[@]}"; do
+for item in "${items[@]}"; do
   # copy if not present in the root directory
-  ls -l $(basename "${ITEM}") >/dev/null 2>&1 || cp -r "${ITEM}" .
+  ls -l $(basename "${item}") >/dev/null 2>&1 || cp -r "${item}" .
 done
 
+ln -sf \
+  modules/dotfiles/.bashrc \
+  modules/dotfiles/.zshrc \
+  modules/dotfiles/.commitlintrc \
+  modules/dotfiles/.idea \
+  modules/dotfiles/.vscode \
+  .
+
+if [[ -d modules/tooling ]]; then
+  mkdir -p config hack scripts tools
+
+  cp -f modules/tooling/.gitignore .
+
+  cd config
+  ln -sf ../modules/tooling/config/* .
+  cd -
+
+  cd hack
+  ln -sf ../modules/tooling/hack/* .
+  cd -
+
+  cd scripts
+  ln -sf ../modules/tooling/scripts/* .
+  cd -
+
+  cd tools
+  ln -sf ../modules/tooling/tools/* .
+  cd -
+fi
+
+# shell
 sudo chsh -s "$(command -v zsh)" "${USER}"
 
 # trunk.io
+ln -sf .trunk/configs/.* .
 if [[ -n $(command -v "trunk") ]]; then
   trunk fmt
   trunk check
