@@ -51,12 +51,12 @@ if [[ ! -d "${HOME}/.oh-my-zsh" ]]; then
 fi
 
 items=(
-  "modules/dotfiles/.devcontainer"
-  "modules/dotfiles/.editorconfig"
-  "modules/dotfiles/.gitignore"
-  "modules/dotfiles/.ssh"
-  "modules/dotfiles/.trunk"
-  "modules/dotfiles/compose-dev.yaml"
+  "modules/config/.devcontainer"
+  "modules/config/.editorconfig"
+  "modules/config/.gitignore"
+  "modules/config/.ssh"
+  "modules/config/.trunk"
+  "modules/config/compose-dev.yaml"
 )
 for item in "${items[@]}"; do
   # copy if not present in the root directory
@@ -64,33 +64,33 @@ for item in "${items[@]}"; do
 done
 
 ln -sf \
-  modules/dotfiles/.bashrc \
-  modules/dotfiles/.zshrc \
-  modules/dotfiles/.commitlintrc \
-  modules/dotfiles/.idea \
-  modules/dotfiles/.vscode \
+  modules/config/.bashrc \
+  modules/config/.zshrc \
+  modules/config/.commitlintrc \
+  modules/config/.idea \
+  modules/config/.vscode \
   .
 
-if [[ -d modules/tooling ]]; then
+if [[ -d modules/toolchain ]]; then
   mkdir -p config hack scripts tools
 
-  cp -f modules/tooling/.gitignore .
-  cp -f modules/tooling/.devcontainer/devcontainer.json .devcontainer/devcontainer.json
+  cp -f modules/toolchain/.gitignore .
+  cp -f modules/toolchain/.devcontainer/devcontainer.json .devcontainer/devcontainer.json
 
   cd config
-  ln -sf ../modules/tooling/config/* .
+  ln -sf ../modules/toolchain/config/* .
   cd -
 
   cd hack
-  ln -sf ../modules/tooling/hack/* .
+  ln -sf ../modules/toolchain/hack/* .
   cd -
 
   cd scripts
-  ln -sf ../modules/tooling/scripts/* .
+  ln -sf ../modules/toolchain/scripts/* .
   cd -
 
   cd tools
-  ln -sf ../modules/tooling/tools/* .
+  ln -sf ../modules/toolchain/tools/* .
   cd -
 fi
 
