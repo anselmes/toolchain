@@ -75,7 +75,8 @@ if [[ -d modules/toolchain ]]; then
   mkdir -p config hack scripts tools
 
   cp -f modules/toolchain/.gitignore .
-  cp -f modules/toolchain/.devcontainer/devcontainer.json .devcontainer/devcontainer.json
+  ls -l .devcontainer/devcontainer.json >/dev/null 2>&1 ||
+    cp -f modules/toolchain/.devcontainer/devcontainer.json .devcontainer/devcontainer.json
 
   cd config
   ln -sf ../modules/toolchain/config/* .
