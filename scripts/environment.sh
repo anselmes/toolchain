@@ -19,7 +19,7 @@ export GOPATH="/usr/local/go"
 export KREW_ROOT="/usr/local/krew"
 export RUSTUP_HOME="/usr/local/rust/rustup"
 
-export PATH="${LOCAL_BIN}:${KREW_ROOT}/bin:${CARGO_HOME}/bin:${GOPATH}:${TOOLS}${PATH:+:${PATH}}"
+export PATH="${LOCAL_BIN}:${KREW_ROOT}/bin:${CARGO_HOME}/bin:${GOPATH}/bin:${TOOLS}${PATH:+:${PATH}}"
 
 # SSH Agent
 if ! ssh-add -l >>/dev/null; then

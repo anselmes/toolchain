@@ -1,0 +1,40 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0
+
+set -eo pipefail
+
+: "${CPUS:=4}"
+: "${MEMORY:="16GiB"}"
+: "${DISK_SIZE:="64GiB"}"
+
+# note:
+# - minikube starts services that may be available on the Internet. Please ensure that you have a firewall to protect your host from unexpected access. For instance:
+# - apiserver listens on TCP *:8443
+# - kubelet listens on TCP *:10250 and *:10255
+# - kube-scheduler listens on TCP *:10259
+# - kube-controller listens on TCP *:10257
+
+# debug: Run minikube start --alsologtostderr -v=4 to debug crashes
+if grep -E -q 'vmx|svm' /proc/cpuinfo >/dev/null 2>&1; then
+  export DRIVER="kvm2"
+  export OPT="--profile=kubevirt --kvm-gpu=false --hidden=true --kvm-network='' --network='' --kvm-qemu-uri=qemu:///system"
+else
+  export DRIVER="qemu"
+  export OPT="--network=socket_vmnet"
+fi
+
+# note: minikube cluster
+minikube config set cpus "${CPUS}"
+minikube config set memory "${MEMORY}"
+minikube config set disk-size "${DISK_SIZE}"
+minikube start \
+  --cni=cilium \
+  --container-runtime=containerd \
+  --docker-opt=containerd=/var/run/containerd/containerd.sock \
+  --driver="${DRIVER}" \
+  "${OPT}"
+
+# note: addons
+minikube addons enable gvisor
+minikube addons enable metrics-server
+minikube addons enable volumesnapshots

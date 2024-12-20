@@ -1,0 +1,44 @@
+#!/bin/bash
+
+CONFIG="${1:-hack/cluster.yaml}"
+KUBECONFIG="${KUBECONFIG:-hack/kubeconfig.yaml}"
+
+CONTROLLER_IP_ADDR="$(yq '
+  .spec.hosts[] |
+  select(.role == "controller+worker") |
+  .ssh.address
+' "${CONFIG}")"
+CONTROLLER_USER="$(yq '
+  .spec.hosts[] |
+  select(.role == "controller+worker") |
+  .ssh.user
+' "${CONFIG}")"
+
+# todo: configure containerd (docker login)
+cat <<eof >/tmp/prerun.sh
+#!/bin/bash
+sudo mkdir -p /var/lib/k0s/manifests/crds /var/lib/k0s/pki
+sudo touch  /var/lib/k0s/pki/admin.conf
+stat -f /var/lib/k0s/manifests/crds/external-snapshotter.yaml >/dev/null 2>&1 ||
+  sudo k0s kubectl kustomize https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=v8.1.0 |
+  sudo tee /var/lib/k0s/manifests/crds/external-snapshotter.yaml >/dev/null 2>&1
+stat -f /var/lib/k0s/manifests/crds/gateway-api.yaml >/dev/null ||
+  sudo k0s kubectl kustomize https://github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.2.0 |
+  sudo tee /var/lib/k0s/manifests/crds/gateway-api.yaml >/dev/null
+eof
+
+# pre-run
+scp /tmp/prerun.sh "${CONTROLLER_USER}@${CONTROLLER_IP_ADDR}:/tmp/prerun.sh"
+ssh "${CONTROLLER_USER}@${CONTROLLER_IP_ADDR}" chmod +x /tmp/prerun.sh
+ssh "${CONTROLLER_USER}@${CONTROLLER_IP_ADDR}" sudo /tmp/prerun.sh
+ssh "${CONTROLLER_USER}@${CONTROLLER_IP_ADDR}" rm -f /tmp/prerun.sh
+
+# create cluster
+k0sctl apply --config "${CONFIG}"
+
+# fixme: export kubeconfig (do not overwrite)
+k0sctl kubeconfig --config hack/cluster.yaml >"${KUBECONFIG}"
+chmod 0600 "${KUBECONFIG}"
+
+# post-run
+kubectl --kubeconfig "${KUBECONFIG}" cluster-info

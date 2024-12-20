@@ -1,0 +1,22 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0
+
+set -eo pipefail
+
+# note: kind cluster
+kind create cluster --config config/kind.yaml
+kustomize build deployment/crd | kubectl apply -f -
+
+# note: cloud provider
+docker container run --rm \
+  --network kind \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  sanselme/cloud-provider-kind
+
+# debug: proxy
+# docker container run --rm \
+#   --name kind-proxy \
+#   --network kind \
+#   -p 1080:1080 \
+#   serjs/go-socks5-proxy@sha256:aad36c623f16850d7cea0171d1aa79d706129191db9e270b6dfd7db6b552c734
+# export ALL_PROXY=socks5://localhost:1080
