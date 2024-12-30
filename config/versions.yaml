@@ -13,13 +13,6 @@ binary:
     archs:
       - amd64
       - arm64
-  - name: yq
-    type: executable
-    url: https://github.com/mikefarah/yq/releases/download/v${version}/yq_${os}_${arch}
-    version: 4.44.3
-    archs:
-      - amd64
-      - arm64
 package:
   add: []
   # - name: ""
@@ -29,24 +22,24 @@ package:
   remove: []
   # - name: containerd
   #   type: apt
-  group:
-    - name: docker
-      keyring: https://download.docker.com/${os}/ubuntu/gpg
-      repo: https://download.docker.com/${os}/ubuntu
-      type: apt
-      add:
-        - containerd.io
-        - docker-buildx-plugin
-        - docker-ce-cli
-        - docker-ce
-        - docker-compose-plugin
-      remove:
-        - containerd
-        - docker-compose
-        - docker-doc
-        - docker.io
-        - podman-docker
-        - runc
+  group: []
+  # - name: docker
+  #   keyring: https://download.docker.com/${os}/ubuntu/gpg
+  #   repo: https://download.docker.com/${os}/ubuntu
+  #   type: apt
+  #   add:
+  #     - containerd.io
+  #     - docker-buildx-plugin
+  #     - docker-ce-cli
+  #     - docker-ce
+  #     - docker-compose-plugin
+  #   remove:
+  #     - containerd
+  #     - docker-compose
+  #     - docker-doc
+  #     - docker.io
+  #     - podman-docker
+  #     - runc
 plugin:
   - name: kubectl
     installer: krew
