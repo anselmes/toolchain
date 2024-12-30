@@ -1,3 +1,3 @@
 [submodule "modules/config"]
-	path = modules/config
-	url = git@github.com:anselmes/config.git
+  path = modules/config
+  url = git@github.com:anselmes/config.git
