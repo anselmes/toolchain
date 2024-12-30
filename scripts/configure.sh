@@ -9,6 +9,8 @@ if [[ -n $(command -v "apt-get") ]]; then
     "curl"
     "git"
     "gnupg2"
+    "jq"
+    "yq"
     "zsh"
   )
 
@@ -101,6 +103,10 @@ sudo chsh -s "$(command -v zsh)" "${USER}"
 # trunk.io
 ln -sf .trunk/configs/.* .
 if [[ -n $(command -v "trunk") ]]; then
+  trunk fmt
+  trunk check
+else
+  curl https://get.trunk.io -fsSL | bash
   trunk fmt
   trunk check
 fi

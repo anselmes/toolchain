@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0
-# source ../alias.sh
-source ../environment.sh
+# source scripts/alias.sh
+source scripts/environment.sh
 
 ARCH="$(uname -m)"
 SWIFT_VERSION="6.0.2"
