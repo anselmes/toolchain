@@ -1,0 +1,12 @@
+{
+  "threshold": 15,
+  "ignore": [
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/*.md",
+    "**/*.txt"
+  ]
+}

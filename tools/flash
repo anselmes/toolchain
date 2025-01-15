@@ -1,0 +1,28 @@
+#!/bin/bash
+
+ESP32_PROJ_DIR="${1}"
+ESP32_USB_DEV="${2}"
+
+# check arguments
+[[ -z ${ESP32_PROJ_DIR} ]] && echo "Missing project directory" && exit 1
+[[ -z ${ESP32_USB_DEV} ]] && echo "Missing USB device" && exit 1
+
+# check project directory
+[[ ! -d ${ESP32_PROJ_DIR} ]] && echo "Invalid project directory" && exit 1
+[[ ! -f "${ESP32_PROJ_DIR}/CMakeLists.txt" ]] && echo "Invalid project directory" && exit 1
+
+# get project name
+cd "${ESP32_PROJ_DIR}" || exit
+ESP32_PROJ_NAME="$(cat CMakeLists.txt | grep 'project(' | cut -d '(' -f 2 | tr -d ')')"
+
+# flash
+python -m esptool \
+  -b 460800 \
+  -p "${ESP32_USB_DEV}" \
+  --after hard_reset \
+  --before default_reset \
+  --chip esp32c6 \
+  write_flash \
+  --flash_mode dio \
+  --flash_size 2MB \
+  --flash_freq 80m 0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 "build/${ESP32_PROJ_NAME}.bin"

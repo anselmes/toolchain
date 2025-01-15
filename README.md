@@ -15,7 +15,7 @@
 
 ---
 
-Copyright (c) 2023 Schubert Anselme <schubert@anselm.es>
+Copyright (c) Schubert Anselme <schubert@anselm.es>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

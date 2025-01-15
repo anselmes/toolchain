@@ -22,9 +22,9 @@ export RUSTUP_HOME="/usr/local/rust/rustup"
 export PATH="${LOCAL_BIN}:${KREW_ROOT}/bin:${CARGO_HOME}/bin:${GOPATH}/bin:${TOOLS}${PATH:+:${PATH}}"
 
 # SSH Agent
-if ! ssh-add -l >>/dev/null; then
-  eval "$(ssh-agent -s)"
-  ssh-add -k
+if ! ssh-add -l >>/dev/null 2>&1; then
+  eval "$(ssh-agent -s)" >/dev/null
+  ssh-add -k >/dev/null 2>&1
 fi
 
 # Functions
@@ -66,10 +66,10 @@ createvol() {
   local vol_file="${1}"
   local img_file="${2}"
 
-  [[ -z "${vol_file}" ]] && echo "name is required" && exit 1
-  [[ -z "${img_file}" ]] && echo "image file not provided"
+  [[ -z ${vol_file} ]] && echo "name is required" && exit 1
+  [[ -z ${img_file} ]] && echo "image file not provided"
 
-  if [[ -n "${img_file}" ]]; then
+  if [[ -n ${img_file} ]]; then
     img_dir="$(dirname "${img_file}")"
     stat -d "${img_dir}" >/dev/null 2>&1 ||
       mkdir -p "${img_dir}"
@@ -89,10 +89,10 @@ cache() {
   local items="${2}"
   local version="${3:-main}"
 
-  [[ -z "${repo}" ]] && echo "ERROR: repository is required" && return 1
-  [[ -z "${items}" ]] && echo "ERROR: item list is required" && return 1
+  [[ -z ${repo} ]] && echo "ERROR: repository is required" && return 1
+  [[ -z ${items} ]] && echo "ERROR: item list is required" && return 1
 
-  if [[ ! -d "${cache_dir}" ]]; then
+  if [[ ! -d ${cache_dir} ]]; then
     mkdir -p "${cache_dir}"
     tmp="$(mktemp -d)"
     gh repo clone "${repo}" "${tmp}" -- --depth 1 --branch "${version}"

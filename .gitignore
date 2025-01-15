@@ -157,16 +157,5 @@ fabric.properties
 *.vsix
 
 # Project files
-.*
 .env
-!.*.json
-!.*.yaml
-!.commitlintrc
-!.devcontainer/
-!.editorconfig
-!.github/
-!.gitignore
-!.gitmodules
-!.shellcheckrc
-!.trunk/
-!example.env
+!.env.example

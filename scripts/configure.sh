@@ -3,9 +3,12 @@
 # source scripts/aliases.sh
 # source scripts/environment.sh
 
+git submodule update --init
+
 # dependencies
 if [[ -n $(command -v "apt-get") ]]; then
   commands=(
+    "cpufetch"
     "curl"
     "git"
     "gnupg2"
@@ -52,56 +55,81 @@ if [[ ! -d "${HOME}/.oh-my-zsh" ]]; then
   rm -f /tmp/ohmyzsh-install.sh
 fi
 
+# copy if not present in the current directory
 items=(
-  "modules/config/.devcontainer"
   "modules/config/.editorconfig"
+  "modules/config/.github"
   "modules/config/.gitignore"
-  "modules/config/.ssh"
+  "modules/config/.ssh/config"
   "modules/config/.trunk"
+  "modules/config/code-of-conduct.md"
   "modules/config/compose-dev.yaml"
+  "modules/config/CONTRIBUTING.md"
+  "modules/config/PULL_REQUEST_TEMPLATE.md"
+  "modules/config/SECURITY_CONTACTS"
+  "modules/config/SECURITY.md"
+  "modules/toolchain/.devcontainer"
 )
 for item in "${items[@]}"; do
-  # copy if not present in the root directory
-  ls -l $(basename "${item}") >/dev/null 2>&1 || cp -r "${item}" .
+  cp -n -r "${item}" "${PWD}"
 done
 
-ln -sf \
-  modules/config/.bashrc \
-  modules/config/.zshrc \
+# create symlinks in the current directory
+ln -s \
   modules/config/.commitlintrc \
-  modules/config/.idea \
   modules/config/.vscode \
-  .
+  "${PWD}"
 
-if [[ -d modules/toolchain ]]; then
-  mkdir -p config hack scripts tools
+# create symlinks in the home directory
+ln -s \
+  modules/config/.bashrc \
+  modules/config/.gitconfig \
+  modules/config/.zshrc \
+  "${HOME}"
 
-  cp -f modules/toolchain/.gitignore .
-  ls -l .devcontainer/devcontainer.json >/dev/null 2>&1 ||
-    cp -f modules/toolchain/.devcontainer/devcontainer.json .devcontainer/devcontainer.json
+touch CODEOWNERS
+mkdir -p config hack scripts tools
 
-  cd config
-  ln -sf ../modules/toolchain/config/* .
-  cd -
+# configurations
+cd config
+ln -s \
+  ../modules/config/Brewfile \
+  ../modules/config/kind.yaml \
+  ../modules/config/psp.yaml \
+  ../modules/config/rbac.yaml \
+  "${PWD}"
+cd -
 
-  cd hack
-  ln -sf ../modules/toolchain/hack/* .
-  cd -
+# hacks
+cd hack
+cp -n \
+  ../modules/toolchain/hack/* \
+  "${PWD}"
+cd -
 
-  cd scripts
-  ln -sf ../modules/toolchain/scripts/* .
-  cd -
+# scripts
+cd scripts
+ln -s \
+  ../modules/toolchain/scripts/aliases.sh \
+  ../modules/toolchain/scripts/configure.sh \
+  ../modules/toolchain/scripts/environment.sh \
+  ../modules/toolchain/scripts/install.sh \
+  "${PWD}"
+cd -
 
-  cd tools
-  ln -sf ../modules/toolchain/tools/* .
-  cd -
-fi
+# tools
+cd tools
+ln -s \
+  ../modules/toolchain/tools/kind \
+  ../modules/toolchain/tools/minikube \
+  "${PWD}"
+cd -
 
 # shell
 sudo chsh -s "$(command -v zsh)" "${USER}"
 
 # trunk.io
-ln -sf .trunk/configs/.* .
+[[ -d .trunk/configs ]] && ln -s .trunk/configs/.* "${PWD}"
 if [[ -n $(command -v "trunk") ]]; then
   trunk fmt
   trunk check

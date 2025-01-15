@@ -28,13 +28,6 @@ devcontainer:
           - docker-compose.yml
           - docker-compose.yml/**
 
-# Add 'config' label to any changes in the 'config' directory
-config:
-  - changed-files:
-      - any-glob-to-any-file:
-          - config/*
-          - config/**
-
 # Add 'scripting' label to any changes in the 'scripts' directory
 scripting:
   - changed-files:

@@ -4,7 +4,7 @@
 # source scripts/environment.sh
 
 apt-get update -yq
-apt-get install -yq --no-install-recommends \
+apt-get install -yq \
   avahi-utils \
   binutils \
   bison \
@@ -53,4 +53,6 @@ apt-get install -yq --no-install-recommends \
   unzip \
   uuid-dev \
   wget \
+  wine \
+  wine64 \
   zlib1g-dev
