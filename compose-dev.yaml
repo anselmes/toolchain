@@ -1,1 +1,21 @@
-modules/config/compose-dev.yaml
+---
+services:
+  devcontainer:
+    image: ghcr.io/anselmes/devcontainer:24.04
+    privileged: true
+    stdin_open: true
+    tty: true
+    user: root # note: required for /sbin/init
+    working_dir: /home/devcontainer
+    volumes:
+      - .:/home/devcontainer
+    ports: []
+    # - 10022:22
+    # - 10080:80
+    # - 10443:443
+    # - 15900:5900
+    # - 16443:6443
+    networks:
+      devcontainer: {}
+networks:
+  devcontainer: {}
