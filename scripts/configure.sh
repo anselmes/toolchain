@@ -97,7 +97,7 @@ ln -s \
   ../modules/config/kind.yaml \
   ../modules/config/psp.yaml \
   ../modules/config/rbac.yaml \
- "${PWD}"
+  "${PWD}"
 cd -
 
 # hacks
@@ -114,7 +114,7 @@ ln -s \
   ../modules/toolchain/scripts/configure.sh \
   ../modules/toolchain/scripts/environment.sh \
   ../modules/toolchain/scripts/install.sh \
- "${PWD}"
+  "${PWD}"
 cd -
 
 # tools

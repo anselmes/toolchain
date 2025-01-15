@@ -13,7 +13,7 @@ SWIFT_VERSION="6.0.3"
 
 # install swift
 if [[ -z $(command -v swift) ]]; then
-  if [[ ${ARCH} == "aarch64" ]];then
+  if [[ ${ARCH} == "aarch64" ]]; then
     URL="https://download.swift.org/swift-${SWIFT_DEV_VERSION}-branch/ubuntu2404-${ARCH}/swift-${SWIFT_DEV_VERSION}-${SWIFT_DEV_BUILD}/swift-${SWIFT_DEV_VERSION}-${SWIFT_DEV_BUILD}-ubuntu24.04-${ARCH}.tar.gz"
   else
     URL="https://download.swift.org/swift-${SWIFT_DEV_VERSION}-branch/ubuntu2404/swift-${SWIFT_DEV_VERSION}-${SWIFT_DEV_BUILD}/swift-${SWIFT_DEV_VERSION}-${SWIFT_DEV_BUILD}-ubuntu24.04.tar.gz"
