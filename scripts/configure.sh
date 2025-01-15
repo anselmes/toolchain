@@ -60,7 +60,6 @@ items=(
   "modules/config/.editorconfig"
   "modules/config/.github"
   "modules/config/.gitignore"
-  "modules/config/.ssh/config"
   "modules/config/.trunk"
   "modules/config/code-of-conduct.md"
   "modules/config/compose-dev.yaml"
@@ -88,7 +87,15 @@ ln -s \
   "${HOME}"
 
 touch CODEOWNERS
-mkdir -p config hack scripts tools
+mkdir -p \
+  "${HOME}/.ssh" \
+  config \
+  hack \
+  scripts \
+  tools
+
+# ssh
+cp -n -r modules/config/.ssh/config "${HOME}/.ssh/config"
 
 # configurations
 cd config
