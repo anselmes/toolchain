@@ -48,12 +48,34 @@ if [[ -n $(command -v "usermod") ]]; then
   id "${user}"
 fi
 
+touch CODEOWNERS
+mkdir -p \
+  "${HOME}/.ssh" \
+  "${PWD}/config" \
+  "${PWD}/docs" \
+  "${PWD}/hack" \
+  "${PWD}/scripts" \
+  "${PWD}/tools"
+
 # environment
 if [[ ! -d "${HOME}/.oh-my-zsh" ]]; then
   curl -fsSLo /tmp/ohmyzsh-install.sh https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh
   bash /tmp/ohmyzsh-install.sh --unattended || true
   rm -f /tmp/ohmyzsh-install.sh
 fi
+
+# ssh
+cp -n -r modules/config/.ssh/config "${HOME}/.ssh/config"
+
+# copy if not present in the home directory
+items=(
+  modules/config/.bashrc
+  modules/config/.gitconfig
+  modules/config/.zshrc
+)
+for item in "${items[@]}"; do
+  cp -n -r "${item}" "${HOME}"
+done
 
 # copy if not present in the current directory
 items=(
@@ -78,24 +100,6 @@ ln -s \
   modules/config/.commitlintrc \
   modules/config/.vscode \
   "${PWD}"
-
-# create symlinks in the home directory
-ln -s \
-  modules/config/.bashrc \
-  modules/config/.gitconfig \
-  modules/config/.zshrc \
-  "${HOME}"
-
-touch CODEOWNERS
-mkdir -p \
-  "${HOME}/.ssh" \
-  config \
-  hack \
-  scripts \
-  tools
-
-# ssh
-cp -n -r modules/config/.ssh/config "${HOME}/.ssh/config"
 
 # configurations
 cd config
@@ -133,7 +137,7 @@ ln -s \
 cd -
 
 # shell
-sudo chsh -s "$(command -v zsh)" "${USER}"
+sudo chsh -s "$(command -v zsh)" "${user}"
 
 # trunk.io
 [[ -d .trunk/configs ]] && ln -s .trunk/configs/.* "${PWD}"
