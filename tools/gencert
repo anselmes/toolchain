@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -eux
+
+cert_path="build"
+ca_cert_root="deployment/security"
+
+function check_cert {
+  # $1: the certificate file, e.g. ca.pem
+  # $2: the key file, e.g. ca-key.pem
+  local cert="$(openssl x509 -noout -modulus -in "$1")"
+  local key="$(openssl rsa -noout -modulus -in "$2")"
+  if ! [[ ${cert} == "${key}" ]]; then
+    echo "Failure: tls private key does not match cert"
+    exit 1
+  else
+    echo "Pass: ${cert} is valid with ${key}"
+  fi
+}
+
+# Sets up a directory for the certs
+mkdir -p "${ca_cert_root}"
+cd "${cert_path}"
+
+cfssl gencert -initca ca.json | cfssljson -bare ca -
+check_cert ca.pem ca-key.pem
+
+cfssl gencert -initca intermediate-ca.json | cfssljson -bare intermediate-ca -
+cfssl sign -ca ca.pem -ca-key ca-key.pem -config cfssl.json -profile intermediate_ca \
+  intermediate-ca.csr | cfssljson -bare intermediate-ca
+check_cert intermediate-ca.pem intermediate-ca-key.pem
