@@ -7,7 +7,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   bot:
@@ -46,6 +47,7 @@ jobs:
       discussions: read
       id-token: write
       issues: read
+      models: read
       packages: read
       pages: read
       pull-requests: read

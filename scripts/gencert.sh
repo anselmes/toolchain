@@ -1,11 +1,14 @@
 #!/bin/bash
+
 # SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
 # source scripts/aliases.sh
 source scripts/environment.sh
 
 generate_root_ca() {
   config="${1}"
-  [[ -z "${config}" ]] && echo "missing config file" && exit 1
+  [[ -z ${config} ]] && echo "missing config file" && exit 1
 
   export name="$(yq '.metadata.name' "${config}")"
   export site_dir="$(yq '.status.site_dir' "${config}")"
@@ -17,7 +20,7 @@ generate_root_ca() {
     openssl req \
       -new \
       -x509 \
-      -days ${pki_ca_days} \
+      -days "${pki_ca_days}" \
       -extensions v3_ca \
       -keyout "${pki_ca_key_file}" \
       -out "${pki_ca_cert_file}" \
@@ -44,14 +47,14 @@ generate_intermediate_ca() {
 
   export $(getenv <(yq '.status' "${config}" | grep pki))
 
-  [[ -z "${config}" ]] && echo "missing config file" && exit 1
-  [[ -z "${intermediate_ca_subj}" ]] && echo "missing intermediate subject" && exit 1
-  [[ -z "${intermediate_ca_valid_for}" ]] && echo "missing intermediate valid for" && exit 1
-  [[ -z "${intermediate_ca_key_file}" ]] && echo "missing intermediate key file" && exit 1
-  [[ -z "${intermediate_ca_cert_file}" ]] && echo "missing intermediate ca file" && exit 1
-  [[ -z "${intermediate_ca_bundle}" ]] && echo "missing intermediate ca bundle file" && exit 1
+  [[ -z ${config} ]] && echo "missing config file" && exit 1
+  [[ -z ${intermediate_ca_subj} ]] && echo "missing intermediate subject" && exit 1
+  [[ -z ${intermediate_ca_valid_for} ]] && echo "missing intermediate valid for" && exit 1
+  [[ -z ${intermediate_ca_key_file} ]] && echo "missing intermediate key file" && exit 1
+  [[ -z ${intermediate_ca_cert_file} ]] && echo "missing intermediate ca file" && exit 1
+  [[ -z ${intermediate_ca_bundle} ]] && echo "missing intermediate ca bundle file" && exit 1
 
-  out_dir="$(dirname ${intermediate_ca_cert_file})"
+  out_dir="$(dirname "${intermediate_ca_cert_file}")"
 
   stat "${intermediate_ca_cert_file}" >/dev/null 2>&1 ||
     openssl genrsa -out "${intermediate_ca_key_file}"
@@ -63,13 +66,13 @@ generate_intermediate_ca() {
       -out /tmp/intermediate-ca.csr \
       -subj "${intermediate_ca_subj}"
 
-    cd "${out_dir}"
+    cd "${out_dir}" || exit
     openssl ca \
       -batch \
       -notext \
       -rand_serial \
       -cert "${pki_ca_cert_file}" \
-      -days ${intermediate_ca_valid_for} \
+      -days "${intermediate_ca_valid_for}" \
       -extensions v3_ca \
       -in /tmp/intermediate-ca.csr \
       -keyfile "${pki_ca_key_file}" \
@@ -78,7 +81,7 @@ generate_intermediate_ca() {
       -passin pass: \
       -policy policy_anything \
       -subj "${intermediate_ca_subj}"
-    popd
+    popd || exit
   fi
 
   stat "${intermediate_ca_bundle}" >/dev/null 2>&1 ||

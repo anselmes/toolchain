@@ -1,12 +1,14 @@
 #!/bin/bash
+
 # SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
 
 VER=$(curl -s https://api.github.com/repos/Mirantis/cri-dockerd/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//g')
 echo installing cri-docker "${VER}"
 
 ### For Intel 64-bit CPU ###
-wget https://github.com/Mirantis/cri-dockerd/releases/download/v${VER}/cri-dockerd-${VER}.amd64.tgz
-tar xvf cri-dockerd-${VER}.amd64.tgz
+wget https://github.com/Mirantis/cri-dockerd/releases/download/v"${VER}"/cri-dockerd-"${VER}".amd64.tgz
+tar xvf cri-dockerd-"${VER}".amd64.tgz
 
 ### For ARM 64-bit CPU ###
 # wget https://github.com/Mirantis/cri-dockerd/releases/download/v${VER}/cri-dockerd-${VER}.arm64.tgz
