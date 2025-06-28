@@ -1,3 +1,0 @@
-[submodule "modules/config"]
-  path = modules/config
-  url = https://github.com/anselmes/config.git
