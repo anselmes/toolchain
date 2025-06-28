@@ -12,48 +12,23 @@ permissions:
 
 jobs:
   bot:
-    uses: anselmes/cicd/.github/workflows/bot.yml@main # main https://github.com/anselmes/cicd/commit/main
+    uses: anselmes/cicd/.github/workflows/bot.yml@042c5469e6121d8aa7578e177c58e12deebff9e1 # v0.2.1
     permissions:
+      contents: write
       issues: write
       pull-requests: write
       repository-projects: write
 
   trivy:
-    uses: anselmes/cicd/.github/workflows/trivy.yml@main # main https://github.com/anselmes/cicd/commit/main
+    uses: anselmes/cicd/.github/workflows/trivy.yml@042c5469e6121d8aa7578e177c58e12deebff9e1 # v0.2.1
     permissions:
-      actions: read
-      attestations: read
-      checks: read
       contents: write
-      deployments: read
-      discussions: read
       id-token: write
-      issues: read
-      packages: read
-      pages: read
-      pull-requests: read
-      repository-projects: read
       security-events: write
-      statuses: read
 
   scorecard:
-    uses: anselmes/cicd/.github/workflows/scorecard.yml@main # main https://github.com/anselmes/cicd/commit/main
+    uses: anselmes/cicd/.github/workflows/scorecard.yml@042c5469e6121d8aa7578e177c58e12deebff9e1 # v0.2.1
     permissions:
-      actions: read
-      attestations: read
-      checks: read
       contents: read
-      deployments: read
-      discussions: read
       id-token: write
-      issues: read
-      models: read
-      packages: read
-      pages: read
-      pull-requests: read
-      repository-projects: read
       security-events: write
-      statuses: read
-
-  # sonarqube:
-  #   uses: anselmes/cicd/.github/workflows/sonarqube.yml@main # main https://github.com/anselmes/cicd/commit/main
