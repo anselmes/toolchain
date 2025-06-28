@@ -1,5 +1,8 @@
 #!/bin/bash
+
 # SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
 # source scripts/alias.sh
 source scripts/environment.sh
 
@@ -8,7 +11,7 @@ VERSION_CONFIG="config/versions.yaml"
 export arch="$(uname -m)"
 export os="$(uname | tr '[:upper:]' '[:lower:]')"
 
-if [[ "${arch}" == "aarch64" ]]; then
+if [[ ${arch} == "aarch64" ]]; then
   export arch="arm64"
 fi
 
@@ -42,7 +45,7 @@ for name in ${package_groups[@]}; do
   fi
 
   # check enabled
-  if [[ "${enabled}" == "false" ]]; then
+  if [[ ${enabled} == "false" ]]; then
     echo "${name} is not enabled"
     continue
   fi
@@ -71,21 +74,21 @@ for name in ${binaries[@]}; do
   fi
 
   # check enabled
-  if [[ "${enabled}" == "false" ]]; then
+  if [[ ${enabled} == "false" ]]; then
     echo "${name} is not enabled"
     continue
   fi
 
-  if [[ "${archs[@]}" =~ "${arch}" ]]; then
+  if [[ ${archs[@]} =~ ${arch} ]]; then
     echo "================== installing ${name} ${version} on ${os} for ${arch}" ==================
     export url="$(printf "${url}" | envsubst)"
     export path="$(printf "${path}" | envsubst)"
     case "${type}" in
     archive)
       # set extracted path to /tmp/<name> if not provided
-      [[ "${path}" == "" ]] && path="${name}"
+      [[ ${path} == "" ]] && path="${name}"
 
-      if [[ "${workspace}" == "" ]]; then
+      if [[ ${workspace} == "" ]]; then
         sudo mkdir -p "${workspace}"
         sudo chmod -R 777 "${workspace}"
       fi
@@ -109,7 +112,7 @@ for name in ${binaries[@]}; do
   fi
 
   post_install_cmd=$(yq '.binary[] | select(.name == env(name)) | .post' "${VERSION_CONFIG}")
-  /usr/local/bin/${name} ${post_install_cmd}
+  /usr/local/bin/"${name}" "${post_install_cmd}"
 done
 
 # note: plugins
@@ -123,7 +126,7 @@ for name in ${plugins[@]}; do
   elif "${name}" "${installer}" >/dev/null 2>&1; then
     echo "================== installing ${name} plugins ================="
     list=$(yq '.plugin[] | select(.name == env(name)) | .list[]' "${VERSION_CONFIG}")
-    "${name}" "${installer}" install ${list[*]} || true
+    "${name}" "${installer}" install "${list[*]}" || true
   else
     echo "unsupported plugin installer"
   fi

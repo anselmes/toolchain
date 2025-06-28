@@ -1,5 +1,8 @@
 #!/bin/bash
+
 # SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
 # source scripts/aliases.sh
 source scripts/environment.sh
 
@@ -8,13 +11,13 @@ create_vm() {
   export name="${1}"
   config="${2}"
 
-  [[ -z "${name}" ]] && echo "name is required" && exit 1
-  [[ -z "${config}" ]] && echo "config is required" && exit 1
+  [[ -z ${name} ]] && echo "name is required" && exit 1
+  [[ -z ${config} ]] && echo "config is required" && exit 1
 
   export site_dir="$(yq '.status.site_dir' "${config}")"
   export $(getenv <(yq '.site.vm[] | select(.name == env(name))' "${config}"))
 
-  [[ -z "${arch}" ]] && export arch="$(uname -m)"
+  [[ -z ${arch} ]] && export arch="$(uname -m)"
   case "${arch}" in
   arm64)
     export arch="aarch64"
@@ -24,15 +27,15 @@ create_vm() {
 
   export $(yq --output-format shell '.status' "${config}" | tr -d "'")
 
-  if [[ -z "${vm_type}" ]]; then
+  if [[ -z ${vm_type} ]]; then
     case "$(uname -s)" in
     Linux)
       export vm_type="kvm"
-      [[ -z "${cpu}" ]] && export cpu="host-passthrough"
+      [[ -z ${cpu} ]] && export cpu="host-passthrough"
       ;;
     Darwin)
       export vm_type="hvf"
-      [[ -z "${cpu}" ]] && export cpu="host-passthrough"
+      [[ -z ${cpu} ]] && export cpu="host-passthrough"
       ;;
     *)
       export vm_type="qemu"
@@ -49,7 +52,7 @@ create_vm() {
     cp -f config/vm.xml "${vm_file}"
 
   # create cloudinit iso
-  if [[ "${cloudinit_enabled}" ]]; then
+  if [[ -n ${cloudinit_enabled} ]]; then
     # meta-data
     printf "instance-id: ${vm_id}\nlocal-hostname: ${vm_id}\ncloud-name: nocloud\n" >/tmp/meta-data
 
@@ -64,7 +67,7 @@ create_vm() {
       printf "#cloud-config\nssh_authorized_keys: \n  - ${pubkey}\n" >"${user_data}"
     fi
 
-    if [[ -n "${libvirt_cloudinit_dir}" ]]; then
+    if [[ -n ${libvirt_cloudinit_dir} ]]; then
       export vm_cloudinit="${libvirt_cloudinit_dir}/cloudinit.iso"
     else
       export vm_cloudinit="${site_dir}/cloudinit.iso"
@@ -80,12 +83,12 @@ create_vm() {
   fi
 
   # create volume
-  if [[ -n "${libvirt_image_dir}" ]]; then
+  if [[ -n ${libvirt_image_dir} ]]; then
     export vol="${libvirt_image_dir}/${name}.qcow2"
   else
     export vol="${site_dir}/${name}.qcow2"
   fi
-  if [[ -n "${image}" ]]; then
+  if [[ -n ${image} ]]; then
     stat "${vol}" >/dev/null 2>&1 ||
       createvol "${vol}" "${image}"
   else
@@ -94,9 +97,9 @@ create_vm() {
   fi
 
   # fixme: add vcpu count
-  [[ -n "${cpu}" ]] && yq --inplace '.domain.cpu.+@mode = env(cpu)' "${vm_file}" # cpu
-  [[ -z "${memory}" ]] && export memory=4194304                                  # memory in kib
-  if [[ "${arch}" != "x86_64" ]]; then
+  [[ -n ${cpu} ]] && yq --inplace '.domain.cpu.+@mode = env(cpu)' "${vm_file}" # cpu
+  [[ -z ${memory} ]] && export memory=4194304                                  # memory in kib
+  if [[ ${arch} != "x86_64" ]]; then
     # watchdog
     export vm_watchdog_model="i6300esb"
     export vm_watchdog_action="reset"
@@ -118,7 +121,7 @@ create_vm() {
 
 delete_vm() {
   name="${1}"
-  [[ -z "${name}" ]] && echo "name is required" && exit 1
+  [[ -z ${name} ]] && echo "name is required" && exit 1
   if grep -q "${name}" <(sudo virsh list --all); then
     sudo virsh destroy "${name}"
     sudo virsh dumpxml "${name}" | yq -p xml '.domain.os.nvram.+content' | xargs sudo rm -f -

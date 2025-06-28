@@ -7,7 +7,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   bot:
@@ -19,7 +20,6 @@ jobs:
 
   trivy:
     uses: anselmes/cicd/.github/workflows/trivy.yml@main # main https://github.com/anselmes/cicd/commit/main
-    if: github.ref != 'refs/heads/main'
     permissions:
       actions: read
       attestations: read
@@ -29,7 +29,6 @@ jobs:
       discussions: read
       id-token: write
       issues: read
-      models: read
       packages: read
       pages: read
       pull-requests: read
@@ -39,7 +38,6 @@ jobs:
 
   scorecard:
     uses: anselmes/cicd/.github/workflows/scorecard.yml@main # main https://github.com/anselmes/cicd/commit/main
-    if: github.ref != 'refs/heads/main'
     permissions:
       actions: read
       attestations: read

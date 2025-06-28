@@ -1,5 +1,7 @@
 #!/bin/bash
+
 # SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
 
 # Parses environment variables from a YAML file and outputs them in a shell-compatible format.
 #

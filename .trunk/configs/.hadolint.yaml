@@ -1,0 +1,7 @@
+# Following source doesn't work in most setups
+ignored:
+  - DL3006
+  - DL3008 # FIXME: to be removed
+  - SC1090
+  - SC1091
+  - SC3054

@@ -1,5 +1,8 @@
 #!/bin/bash
+
 # SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
 # ref: https://github.com/johanbrandhorst/grpc-gateway-boilerplate/blob/main/scripts/generate-swagger-ui.sh
 # source scripts/aliases.sh
 # source scripts/environment.sh

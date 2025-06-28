@@ -1,5 +1,7 @@
 #!/bin/bash
+
 # SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
 
 alias dir="dir --color=auto"
 alias vdir="vdir --color=auto"
