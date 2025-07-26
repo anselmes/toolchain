@@ -11,7 +11,7 @@ export LC_ALL=C
 ROOTFS="$1"
 DEV="$2"
 OS="ubuntu:-$3"
-ARCH="${"$(dpkg --print-architecture)":-$4}"
+ARCH="${ARCH:-${4:-$(dpkg --print-architecture)}}"
 
 # source installer
 . /tmp/installer/bootloader/init

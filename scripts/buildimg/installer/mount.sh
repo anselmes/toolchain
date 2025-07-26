@@ -21,10 +21,10 @@ mount_chroot() {
   # Prepare the /dev directory
   mountpoint -q "${mnt}/dev"  || sudo -E mount -t devtmpfs -o nosuid,mode=0755    udev  "${mnt}/dev"
 
-  [ ! -h "${mnt}/dev/fd" ]      && sudo -E ln -s "${mnt}/proc/self/fd"    "${mnt}/dev/fd"
-  [ ! -h "${mnt}/dev/stdin" ]   && sudo -E ln -s "${mnt}/proc/self/fd/0"  "${mnt}/dev/stdin"
-  [ ! -h "${mnt}/dev/stdout" ]  && sudo -E ln -s "${mnt}/proc/self/fd/1"  "${mnt}/dev/stdout"
-  [ ! -h "${mnt}/dev/stderr" ]  && sudo -E ln -s "${mnt}/proc/self/fd/2"  "${mnt}/dev/stderr"
+  [ ! -h "${mnt}/dev/fd" ]      && sudo -E ln -s "/proc/self/fd"    "${mnt}/dev/fd"
+  [ ! -h "${mnt}/dev/stdin" ]   && sudo -E ln -s "/proc/self/fd/0"  "${mnt}/dev/stdin"
+  [ ! -h "${mnt}/dev/stdout" ]  && sudo -E ln -s "/proc/self/fd/1"  "${mnt}/dev/stdout"
+  [ ! -h "${mnt}/dev/stderr" ]  && sudo -E ln -s "/proc/self/fd/2"  "${mnt}/dev/stderr"
 
   # Proper PTY setup
   mountpoint -q "${mnt}/dev/pts" || {
