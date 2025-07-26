@@ -1,0 +1,634 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
+# Usage:
+#   ./qemu [disk_image] [--arch] [options...] [additional_qemu_args...]
+#
+# Examples:
+#   ./qemu --amd64
+#   ./qemu disk.img --arm64 -vnc :1
+#   ./qemu disk.img --riscv64 --enable-kvm
+#   ./qemu disk.img --amd64 --mem 4096 --cpu qemu64
+#   ./qemu --arm64 --bios /path/to/custom.bin
+#   ./qemu --amd64 --net shared --net bridge
+#   ./qemu disk.img                         # Uses host architecture
+
+#
+# QEMU Virtual Machine Launcher
+#
+# This script launches QEMU virtual machines with TPM support for different architectures.
+# Supported architectures: x86_64/amd64, aarch64/arm64, riscv64/rv64
+#
+# Requirements:
+#   - qemu-system-* binaries for target architectures
+#   - swtpm for TPM emulation
+#   - U-Boot binaries in build/image/uboot/ structure
+#
+
+set -euo pipefail
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m' # No Color
+
+# Global configuration
+readonly DEFAULT_MEMORY_SIZE="8192"
+readonly SCRIPT_NAME="$(basename "$0")"
+
+# TPM directory - will be set when needed
+TPM_DIR=""
+
+#
+# Print colored output to stderr
+#
+log_info() {
+  echo -e "${GREEN}[INFO]${NC} $*" >&2
+}
+
+log_warn() {
+  echo -e "${YELLOW}[WARN]${NC} $*" >&2
+}
+
+log_error() {
+  echo -e "${RED}[ERROR]${NC} $*" >&2
+}
+
+#
+# Display usage information
+#
+show_usage() {
+  cat << EOF
+Usage: $SCRIPT_NAME [disk_image] [architecture] [options...] [qemu_options...]
+
+Architectures (optional, defaults to host architecture):
+  --amd64, --x86_64    Launch x86_64 VM
+  --arm64, --aarch64   Launch ARM64 VM
+  --rv64, --riscv64    Launch RISC-V 64-bit VM
+
+Options:
+  --bios <path>        Path to BIOS/U-Boot binary (overrides default)
+  --cpu <cpu>          CPU type (default: host if same arch)
+  --mem, --memory <mb> Memory size in MB (default: $DEFAULT_MEMORY_SIZE)
+  --net <type>         Network type: user (default), shared, bridge, host
+                     Can be specified multiple times for multiple networks
+  --no-tpm             Disable TPM emulation (avoids configuration table size issues)
+  -h, --help          Show this help message
+
+Examples:
+  $SCRIPT_NAME --amd64
+  $SCRIPT_NAME disk.img --arm64 -vnc :1
+  $SCRIPT_NAME disk.img --riscv64 --enable-kvm
+  $SCRIPT_NAME disk.img --amd64 --mem 4096 --cpu qemu64
+  $SCRIPT_NAME disk.img --arm64 --bios /path/to/custom.bin
+  $SCRIPT_NAME --amd64 --net shared --net bridge
+  $SCRIPT_NAME disk.img                     # Uses host architecture
+
+Requirements:
+  - swtpm installed for TPM emulation
+  - QEMU system emulators installed
+EOF
+}
+
+#
+# Clean up temporary files on exit
+#
+cleanup() {
+  local exit_code=$?
+  if [[ -n "$TPM_DIR" && -d "$TPM_DIR" ]]; then
+  log_info "Cleaning up TPM directory: $TPM_DIR"
+  # Kill swtpm daemon if running
+  if [[ -f "${TPM_DIR}/swtpm.pid" ]]; then
+    local swtpm_pid=$(cat "${TPM_DIR}/swtpm.pid" 2>/dev/null || echo "")
+    if [[ -n "$swtpm_pid" ]] && kill -0 "$swtpm_pid" 2>/dev/null; then
+      log_info "Stopping swtpm daemon (PID: $swtpm_pid)"
+      kill "$swtpm_pid" 2>/dev/null || true
+    fi
+  fi
+  rm -rf "$TPM_DIR"
+  fi
+  exit $exit_code
+}
+
+#
+# Validate required dependencies
+#
+check_dependencies() {
+  local missing_deps=()
+
+  # Check for swtpm
+  if ! command -v swtpm >/dev/null 2>&1; then
+  missing_deps+=("swtpm")
+  fi
+
+  # Check for uuidgen
+  if ! command -v uuidgen >/dev/null 2>&1; then
+  missing_deps+=("uuidgen")
+  fi
+
+  if [[ ${#missing_deps[@]} -gt 0 ]]; then
+  log_error "Missing required dependencies: ${missing_deps[*]}"
+  log_error "Please install missing dependencies and try again"
+  exit 1
+  fi
+}
+
+#
+# Detect host architecture and OS for acceleration defaults
+#
+detect_host_info() {
+  case "$(uname -s)" in
+  Darwin) echo "macos" ;;
+  Linux) echo "linux" ;;
+  *) echo "other" ;;
+  esac
+}
+
+get_host_arch() {
+  case "$(uname -m)" in
+  x86_64) echo "x86_64" ;;
+  aarch64|arm64) echo "arm64" ;;
+  riscv64) echo "riscv64" ;;
+  *) echo "other" ;;
+  esac
+}
+
+#
+# Get default acceleration based on host OS and architecture match
+#
+get_default_accel() {
+  local target_arch="$1"
+  local host_os=$(detect_host_info)
+  local host_arch=$(get_host_arch)
+
+  if [[ "$target_arch" == "$host_arch" ]]; then
+  case "$host_os" in
+    macos) echo "tcg" ;; # FIXME: hvf
+    linux) echo "kvm" ;;
+    *) echo "tcg" ;;
+  esac
+  else
+  echo "tcg"
+  fi
+}
+
+#
+# Validate that required files exist
+#
+validate_files() {
+  local disk_image="$1"
+  local bios_path="$2"
+
+  # Only validate disk image if provided
+  if [[ -n "$disk_image" && ! -f "$disk_image" ]]; then
+  log_error "Disk image not found: $disk_image"
+  exit 1
+  fi
+
+  if [[ ! -f "$bios_path" ]]; then
+  log_error "BIOS/U-Boot file not found: $bios_path"
+  log_error "Please ensure U-Boot binaries are built and available"
+  exit 1
+  fi
+}
+
+#
+# Initialize TPM directory and setup cleanup
+#
+init_tpm_env() {
+  if [[ -z "$TPM_DIR" ]]; then
+  TPM_DIR=$(mktemp -d)
+  # Set up cleanup trap only when we actually create TPM resources
+  trap cleanup EXIT INT TERM
+  fi
+}
+
+#
+# Initialize TPM emulation
+#
+setup_tpm() {
+  # Ensure TPM environment is initialized
+  init_tpm_env
+
+  log_info "Setting up TPM emulation in: $TPM_DIR"
+
+  # Start swtpm daemon
+  if ! swtpm socket \
+  --daemon \
+  --tpm2 \
+  --tpmstate dir="$TPM_DIR" \
+  --ctrl type=unixio,path="${TPM_DIR}/swtpm.sock" \
+  --pid file="${TPM_DIR}/swtpm.pid" 2>/dev/null; then
+  log_error "Failed to start swtpm daemon"
+  exit 1
+  fi
+
+  # Wait for socket to be ready
+  local timeout=10
+  while [[ $timeout -gt 0 ]] && [[ ! -S "${TPM_DIR}/swtpm.sock" ]]; do
+  sleep 1
+  ((timeout--))
+  done
+
+  if [[ ! -S "${TPM_DIR}/swtpm.sock" ]]; then
+  log_error "TPM socket not ready after 10 seconds"
+  exit 1
+  fi
+
+  log_info "TPM daemon started successfully"
+}
+
+#
+# Common QEMU arguments for all architectures
+#
+get_common_qemu_args() {
+  local disk_image="$1"
+  local memory_size="$2"
+  local network_configs="$3"
+  local arch="$4"
+  local enable_tpm="$5"
+
+  local args=""
+
+  # Memory
+  args="$args -m $memory_size"
+
+  # Serial console
+  args="$args -serial mon:stdio"
+
+  # TPM configuration (only if enabled)
+  if [[ "$enable_tpm" == "true" ]]; then
+  args="$args -chardev socket,id=chrtpm,path=${TPM_DIR}/swtpm.sock"
+  args="$args -tpmdev emulator,id=tpm0,chardev=chrtpm"
+
+  # Architecture-specific TPM device
+  if [[ "$arch" == "x86_64" ]]; then
+    args="$args -device tpm-tis,tpmdev=tpm0"
+  else
+    args="$args -device tpm-tis-device,tpmdev=tpm0"
+  fi
+  fi
+
+  # Virtual devices
+  args="$args -device virtio-gpu-pci"
+
+  # Disk configuration (only if disk image provided)
+  if [[ -n "$disk_image" ]]; then
+  args="$args -device virtio-blk-pci,drive=hd0"
+  args="$args -drive id=hd0,if=none,format=raw,file=${disk_image}"
+  fi
+
+  # UUID
+  args="$args -uuid $(uuidgen)"
+
+  # Network configurations
+  echo "$args $network_configs"
+}
+
+#
+# Build network configuration arguments
+#
+build_network_config() {
+  local network_types=("$@")
+  local network_args=""
+  local net_index=0
+
+  if [[ ${#network_types[@]} -eq 0 ]]; then
+      network_types=("user")
+  fi
+
+  for net_type in "${network_types[@]}"; do
+      case "$net_type" in
+          user)
+              network_args="$network_args -device virtio-net-pci,netdev=net$net_index"
+              network_args="$network_args -netdev user,id=net$net_index"
+              ;;
+          shared)
+              network_args="$network_args -device virtio-net-pci,netdev=net$net_index"
+              network_args="$network_args -netdev vmnet-shared,id=net$net_index"
+              ;;
+          bridge)
+              network_args="$network_args -device virtio-net-pci,netdev=net$net_index"
+              network_args="$network_args -netdev vmnet-bridged,id=net$net_index"
+              ;;
+          host)
+              network_args="$network_args -device virtio-net-pci,netdev=net$net_index"
+              network_args="$network_args -netdev vmnet-host,id=net$net_index"
+              ;;
+          *)
+              log_warn "Unknown network type: $net_type, using user mode"
+              network_args="$network_args -device virtio-net-pci,netdev=net$net_index"
+              network_args="$network_args -netdev user,id=net$net_index"
+              ;;
+      esac
+      ((net_index++))
+  done
+
+  echo "$network_args"
+}
+
+#
+# Launch x86_64 QEMU VM
+#
+launch_x86_64() {
+  local disk_image="$1"
+  local bios_path="$2"
+  local cpu_type="$3"
+  local memory_size="$4"
+  local accel="$5"
+  local network_configs="$6"
+  local enable_tpm="$7"
+  shift 7
+  local additional_args="$*"
+
+  log_info "Launching x86_64 VM"
+  if [[ -n "$disk_image" ]]; then
+      log_info "Disk image: $disk_image"
+  else
+      log_info "No disk image specified"
+  fi
+
+  # Check if qemu-system-x86_64 is available
+  if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+      log_error "qemu-system-x86_64 not found. Please install QEMU x86_64 support."
+      exit 1
+  fi
+
+  validate_files "$disk_image" "$bios_path"
+
+  # Build acceleration argument
+  local accel_arg=""
+  if [[ -n "$accel" ]]; then
+      accel_arg=",accel=$accel"
+  fi
+
+  # Launch QEMU with proper argument parsing
+  exec qemu-system-x86_64 \
+      -M q35$accel_arg \
+      -cpu "$cpu_type" \
+      -bios "$bios_path" \
+      $(get_common_qemu_args "$disk_image" "$memory_size" "$network_configs" "x86_64" "$enable_tpm") \
+      $additional_args
+}
+
+#
+# Launch ARM64 QEMU VM
+#
+launch_arm64() {
+  local disk_image="$1"
+  local bios_path="$2"
+  local cpu_type="$3"
+  local memory_size="$4"
+  local accel="$5"
+  local network_configs="$6"
+  local enable_tpm="$7"
+  shift 7
+  local additional_args="$*"
+
+  log_info "Launching ARM64 VM"
+  if [[ -n "$disk_image" ]]; then
+      log_info "Disk image: $disk_image"
+  else
+      log_info "No disk image specified"
+  fi
+
+  # Check if qemu-system-aarch64 is available
+  if ! command -v qemu-system-aarch64 >/dev/null 2>&1; then
+      log_error "qemu-system-aarch64 not found. Please install QEMU ARM64 support."
+      exit 1
+  fi
+
+  validate_files "$disk_image" "$bios_path"
+
+  # Build acceleration argument
+  local accel_arg=""
+  if [[ -n "$accel" ]]; then
+      accel_arg=",accel=$accel"
+  fi
+
+  # Launch QEMU with proper argument parsing
+  echo qemu-system-aarch64 \
+      -M virt$accel_arg \
+      -cpu "$cpu_type" \
+      -bios "$bios_path" \
+      $(get_common_qemu_args "$disk_image" "$memory_size" "$network_configs" "arm64" "$enable_tpm") \
+      $additional_args
+}
+
+#
+# Launch RISC-V 64-bit QEMU VM
+#
+launch_riscv64() {
+  local disk_image="$1"
+  local bios_path="$2"
+  local cpu_type="$3"
+  local memory_size="$4"
+  local accel="$5"
+  local network_configs="$6"
+  local enable_tpm="$7"
+  shift 7
+  local additional_args="$*"
+  local spl_path="$bios_path"
+  local itb_path="build/image/uboot/riscv64/qemu/u-boot.itb"
+
+  log_info "Launching RISC-V 64-bit VM"
+  if [[ -n "$disk_image" ]]; then
+      log_info "Disk image: $disk_image"
+  else
+      log_info "No disk image specified"
+  fi
+
+  # Check if qemu-system-riscv64 is available
+  if ! command -v qemu-system-riscv64 >/dev/null 2>&1; then
+      log_error "qemu-system-riscv64 not found. Please install QEMU RISC-V support."
+      exit 1
+  fi
+
+  validate_files "$disk_image" "$spl_path"
+  validate_files "$disk_image" "$itb_path"
+
+  # Build acceleration argument
+  local accel_arg=""
+  if [[ -n "$accel" ]]; then
+      accel_arg=",accel=$accel"
+  fi
+
+  # Launch QEMU with proper argument parsing
+  exec qemu-system-riscv64 \
+      -M virt$accel_arg \
+      -cpu "$cpu_type" \
+      -bios "$spl_path" \
+      -device loader,addr=0x80200000,file="$itb_path" \
+      $(get_common_qemu_args "$disk_image" "$memory_size" "$network_configs" "riscv64" "$enable_tpm") \
+      $additional_args
+}
+
+#
+# Main function
+#
+main() {
+  # Parse command line arguments first - don't set up any resources yet
+  if [[ $# -gt 0 && ("$1" == "-h" || "$1" == "--help") ]]; then
+      show_usage
+      exit 0
+  fi
+
+  # Initialize variables
+  local disk_image=""
+  local arch=""
+  local bios_path=""
+  local cpu_type=""
+  local memory_size="$DEFAULT_MEMORY_SIZE"
+  local network_types=()
+  local additional_args=()
+  local enable_tpm="true"
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+      case "$1" in
+          --amd64|--x86_64)
+              arch="x86_64"
+              shift
+              ;;
+          --arm64|--aarch64)
+              arch="arm64"
+              shift
+              ;;
+          --rv64|--riscv64)
+              arch="riscv64"
+              shift
+              ;;
+          --bios)
+              if [[ -z "$2" ]]; then
+                  log_error "--bios requires a path argument"
+                  exit 1
+              fi
+              bios_path="$2"
+              shift 2
+              ;;
+          --cpu)
+              if [[ -z "$2" ]]; then
+                  log_error "--cpu requires a CPU type argument"
+                  exit 1
+              fi
+              cpu_type="$2"
+              shift 2
+              ;;
+          --mem|--memory)
+              if [[ -z "$2" ]]; then
+                  log_error "--mem/--memory requires a memory size argument"
+                  exit 1
+              fi
+              memory_size="$2"
+              shift 2
+              ;;
+          --net)
+              if [[ -z "$2" ]]; then
+                  log_error "--net requires a network type argument"
+                  exit 1
+              fi
+              network_types+=("$2")
+              shift 2
+              ;;
+          --no-tpm)
+              enable_tpm="false"
+              shift
+              ;;
+          -h|--help)
+              show_usage
+              exit 0
+              ;;
+          -*)
+              # QEMU option
+              additional_args+=("$1")
+              shift
+              ;;
+          *)
+              # Assume it's the disk image if we haven't set one yet
+              if [[ -z "$disk_image" ]]; then
+                  disk_image="$1"
+              else
+                  additional_args+=("$1")
+              fi
+              shift
+              ;;
+      esac
+  done
+
+  # Set default architecture if not specified
+  if [[ -z "$arch" ]]; then
+      local host_arch=$(get_host_arch)
+      case "$host_arch" in
+          x86_64) arch="x86_64" ;;
+          arm64) arch="arm64" ;;
+          riscv64) arch="riscv64" ;;
+          *)
+              log_error "Unsupported host architecture: $host_arch"
+              log_error "Please specify one of: --amd64, --arm64, --riscv64"
+              show_usage
+              exit 1
+              ;;
+      esac
+      log_info "No architecture specified, defaulting to host architecture: $arch"
+  fi
+
+  # Set default BIOS path if not specified
+  if [[ -z "$bios_path" ]]; then
+      case "$arch" in
+          x86_64)
+              bios_path="build/image/uboot/amd64/qemu/u-boot.rom"
+              ;;
+          arm64)
+              bios_path="build/image/uboot/arm64/qemu/u-boot.bin"
+              ;;
+          riscv64)
+              bios_path="build/image/uboot/riscv64/qemu/u-boot-spl.bin"
+              ;;
+      esac
+  fi
+
+  # Set default CPU type if not specified
+  if [[ -z "$cpu_type" ]]; then
+      local host_arch=$(get_host_arch)
+      if [[ "$arch" == "$host_arch" ]]; then
+          cpu_type="host"
+      else
+          cpu_type="max"
+      fi
+  fi
+
+  # Get default acceleration
+  local accel=$(get_default_accel "$arch")
+
+  # Check dependencies
+  if [[ "$enable_tpm" == "true" ]]; then
+      check_dependencies
+  fi
+
+  # Build network configuration
+  local network_configs=$(build_network_config "${network_types[@]+${network_types[@]}}")
+
+  # Set up TPM resources if enabled
+  if [[ "$enable_tpm" == "true" ]]; then
+      setup_tpm
+  fi
+
+  # Launch appropriate VM
+  case "$arch" in
+      x86_64)
+          launch_x86_64 "$disk_image" "$bios_path" "$cpu_type" "$memory_size" "$accel" "$network_configs" "$enable_tpm" "${additional_args[@]+${additional_args[@]}}"
+          ;;
+      arm64)
+          launch_arm64 "$disk_image" "$bios_path" "$cpu_type" "$memory_size" "$accel" "$network_configs" "$enable_tpm" "${additional_args[@]+${additional_args[@]}}"
+          ;;
+      riscv64)
+          launch_riscv64 "$disk_image" "$bios_path" "$cpu_type" "$memory_size" "$accel" "$network_configs" "$enable_tpm" "${additional_args[@]+${additional_args[@]}}"
+          ;;
+  esac
+}
+
+# Run main function with all arguments
+main "$@"

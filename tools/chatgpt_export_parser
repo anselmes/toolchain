@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+
+# SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
+import argparse
+import json
+import re
+from datetime import datetime
+from pathlib import Path
+
+KEYWORDS = {
+    "Networking": ["BGP", "WireGuard", "routing", "switch", "interface"],
+    "Linux": ["ZFS", "kernel", "boot", "GRUB", "initramfs", "systemd"],
+    "iOS": ["SwiftUI", "SwiftData", "HealthKit", "WidgetKit", "AppIntents"],
+    "Python": ["python", "script", "argparse", "json"],
+    "Security": ["LUKS", "encryption", "SOPS", "cert-manager"],
+    "Containers": ["docker", "podman", "k8s", "container"],
+    "General": []
+}
+
+def infer_category(title, message_texts):
+    content = title.lower() + " " + " ".join(message_texts).lower()
+    for category, keywords in KEYWORDS.items():
+        if any(kw.lower() in content for kw in keywords):
+            return category
+    return "General"
+
+def sanitize_filename(name: str) -> str:
+    name = re.sub(r'[\\/*?:"<>|]', "_", name).strip()
+    return name[:100]
+
+def parse_chat_export(input_path: Path, output_dir: Path):
+    with open(input_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    chats = data if isinstance(data, list) else data.get("conversations", [])
+
+    for chat in chats:
+        title = sanitize_filename(chat.get("title", "untitled"))
+        messages = chat.get("mapping", {})
+
+        # Extract message content for category inference
+        content_texts = []
+        for node in messages.values():
+            msg = node.get("message")
+            if msg:
+                parts = msg["content"].get("parts", [])
+                for part in parts:
+                    if isinstance(part, str):
+                        content_texts.append(part)
+                    elif isinstance(part, dict) and "text" in part:
+                        content_texts.append(part["text"])
+
+        # Date info
+        create_time = chat.get("create_time") or 0
+        dt = datetime.fromtimestamp(create_time)
+        year = dt.strftime("%Y")
+        month = dt.strftime("%B")  # "January", "February", etc.
+        date_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        category = infer_category(title, content_texts)
+        output_path = (
+            output_dir
+            / year
+            / month
+            / category
+            / f"{title}.md"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, "w", encoding="utf-8") as out:
+            out.write(f"# {title}\n")
+            out.write(f"_Created: {date_str}_\n")
+            out.write(f"_Category: {category}_\n\n")
+
+            for node in messages.values():
+                msg = node.get("message")
+                if msg:
+                    role = msg["author"]["role"]
+                    parts = msg["content"].get("parts", [])
+                    prefix = "### User" if role == "user" else "### Assistant"
+                    for part in parts:
+                        if isinstance(part, str):
+                            out.write(f"{prefix}\n\n{part.strip()}\n\n---\n\n")
+                        elif isinstance(part, dict):
+                            text = part.get("text") or json.dumps(part, indent=2)
+                            out.write(f"{prefix}\n\n{text.strip()}\n\n---\n\n")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Convert ChatGPT export JSON to Markdown files.")
+    parser.add_argument("--input", required=True, help="Path to conversations.json")
+    parser.add_argument("--output", required=True, help="Directory to write markdown files")
+
+    args = parser.parse_args()
+    input_path = Path(args.input).expanduser().resolve()
+    output_dir = Path(args.output).expanduser().resolve()
+
+    parse_chat_export(input_path, output_dir)

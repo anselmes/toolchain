@@ -1,0 +1,72 @@
+#!/bin/sh
+
+# SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
+echo -n "Verifying image checksum..."
+sha256=$(sed -e '1,/^__IMAGE__$/d' "$0" | sha256sum | awk '{ print $1 }')
+
+payload_sha256
+
+if [ "$sha256" != "$payload_sha256" ]; then
+  echo
+  echo "ERROR     : Unable to verify image checksum."
+  echo "Expected  : $payload_sha256"
+  echo "Found     : $sha256"
+  exit 1
+fi
+
+echo " OK!"
+
+# Untar and launch install script in a tmpfs
+cwd=$(pwd)
+export cwd
+archive_dir=$(realpath "$0")
+tmp_dir=$(mktemp -d)
+
+# Avoid creating a ramfs if the target system has 4G or less RAM
+total_mem_kb=$(cat /proc/meminfo | grep MemTotal | cut -d: -f2 | awk '{ print $1 }')
+tmpfs_mount=1
+if [ $total_mem_kb -le 4194304 ]; then
+  tmpfs_mount=0
+fi
+
+if [ $tmpfs_mount -eq 1 ] && [ "$(id -u)" = "0" ]; then
+  mount -t tmpfs tmpfs-installer $tmp_dir || exit 1
+fi
+
+cd $tmp_dir
+echo -n "Preparing image archive..."
+
+# Check if the installer file is a package or binary
+sed -e '1,/^__IMAGE__$/d' $archive_dir | tar tf - | grep -q nos.bin && PKG_FILE=1
+if [ "$PKG_FILE" = "1" ]; then
+  sed -e '1,/^__IMAGE__$/d' $archive_dir | tar xf - installer || exit 1
+  sed -e '1,/^__IMAGE__$/d' $archive_dir | tar --to-stdout -xf - nos.bin | sed -e '1,/^__IMAGE__$/d' | tar -xf - || exit 1
+else
+  sed -e '1,/^__IMAGE__$/d' $archive_dir | tar xf - || exit 1
+fi
+
+echo " OK!"
+
+cd $cwd
+if [ -n "$extract" ]; then
+  # stop here
+  echo "Image extracted to: $tmp_dir"
+  if [ "$(id -u)" = "0" ] && [ ! -d "extract" ]; then
+    echo "To unmount the tmpfs when finished type: umount $tmp_dir"
+  fi
+  exit 0
+fi
+
+$tmp_dir/installer/install
+rc="$?"
+
+# cleanup
+if [ $tmpfs_mount -eq 1 ] && [ "$(id -u)" = "0" ]; then
+  umount $tmp_dir
+fi
+rm -rf $tmp_dir
+
+exit $rc
+__IMAGE__
