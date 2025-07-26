@@ -1,0 +1,96 @@
+#!/bin/bash
+
+set -eo pipefail
+
+export DEBCONF_NONINTERACTIVE_SEEN=true
+export DEBIAN_FRONTEND=noninteractive
+export LANG=C
+export LANGUAGE=C
+export LC_ALL=C
+
+ROOTFS="$1"
+DEV="$2"
+OS="ubuntu:-$3"
+ARCH="${"$(dpkg --print-architecture)":-$4}"
+
+# source installer
+. /tmp/installer/bootloader/init
+. /tmp/installer/storage/init
+. /tmp/installer/lib/init
+
+# Detect environment and set variables
+ENVIRONMENT=$(detect_environment)
+echo "Detected environment: $ENVIRONMENT"
+
+# Set environment-specific variables
+case "$ENVIRONMENT" in
+  baremetal)
+    echo "Running on baremetal hardware"
+    IS_BAREMETAL=true
+    IS_VIRTUAL=false
+    ;;
+  virtual*)
+    echo "Running in virtual environment: $ENVIRONMENT"
+    IS_BAREMETAL=false
+    IS_VIRTUAL=true
+    ;;
+  *)
+    echo "Warning: Could not reliably detect environment type"
+    IS_BAREMETAL=false
+    IS_VIRTUAL=false
+    ;;
+esac
+
+# Run the checks
+check_parts
+
+# Run partitioning
+partition_disks
+
+# Run formatting
+format_partitions
+
+# mount
+mount_chroot
+[ -d "${ROOTFS}/tmp/installer" ] || mkdir -p "${ROOTFS}/tmp/installer"
+mountpoint -q "${ROOTFS}/tmp/installer" || sudo -E mount --bind /tmp/installer "${ROOTFS}/tmp/installer"
+
+# extract rootfs
+extract_rootfs "$ROOTFS"
+
+# chroot
+sudo chroot "$ROOTFS" /usr/bin/env ARCH="$ARCH" OS="$OS" DEV="$DEV" bash -l <<EOF
+  export DEBCONF_NONINTERACTIVE_SEEN=true
+  export DEBIAN_FRONTEND=noninteractive
+  export LANG=C
+  export LANGUAGE=C
+  export LC_ALL=C
+
+  # source installer inside chroot
+  . /tmp/installer/bootloader/init
+  . /tmp/installer/storage/init
+  . /tmp/installer/lib/init
+
+  configure_system
+  setup_motd
+
+  # update initramfs
+  update-initramfs -u
+
+  # install grub
+  install_grub_efi "$DEV" "$OS" "$ARCH"
+
+  # configure cloud-init
+  sed -i "s/instance-id:.*/instance-id: $(uuidgen)/" /var/lib/cloud/seed/nocloud/meta-data
+  sed -i 's/packages:.*/packages:/g' /var/lib/cloud/seed/nocloud/user-data
+  sed -i 's/# - ubuntu-standard/- ubuntu-standard/g' /var/lib/cloud/seed/nocloud/user-data
+  sed -i 's/# - zsh/- zsh/g' /var/lib/cloud/seed/nocloud/user-data
+
+  # cleanup
+  rm -rf /tmp/*
+  history -c
+EOF
+
+# umount
+umount_chroot "$ROOTFS"
+cleanup
