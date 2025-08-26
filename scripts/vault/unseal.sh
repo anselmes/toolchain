@@ -22,8 +22,8 @@ API_WAIT_SECONDS=${API_WAIT_SECONDS:-300}
 # Sleep between retries while waiting on API
 API_WAIT_SLEEP=${API_WAIT_SLEEP:-2}
 
-UNSEAL_KEYS_FILE="${UNSEAL_KEYS_FILE:-/etc/vault.d/unseal-keys}"
-UNSEAL_JSON_FILE="${UNSEAL_JSON_FILE:-/etc/vault.d/unseal.json}"
+UNSEAL_KEYS_FILE="${UNSEAL_KEYS_FILE:-/opt/vault/unseal-keys}"
+UNSEAL_JSON_FILE="${UNSEAL_JSON_FILE:-/opt/vault/unseal.json}"
 
 log() { printf '%s %s\n' "$(date -Is)" "$*" >&2; }
 
@@ -166,7 +166,7 @@ main() {
         log "ERROR: Vault initialization failed."
         exit 1
       fi
-      # Save keys to /etc/vault.d/unseal.json
+      # Save keys to /opt/vault/unseal.json
   echo "$init_resp" > "${UNSEAL_JSON_FILE}"
   chmod 0600 "${UNSEAL_JSON_FILE}"
   log "Vault initialized. Unseal keys saved to ${UNSEAL_JSON_FILE}."
