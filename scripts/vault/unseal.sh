@@ -11,8 +11,9 @@
 #   2 Vault API never came up
 #   3 unseal attempts failed
 
-set -euo pipefail
+set -euxo pipefail
 
+VAULT_SKIP_VERIFY=${VAULT_SKIP_VERIFY:-false}
 VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
 # Extra curl flags (e.g., "--cacert /etc/ssl/myca.pem" or "--connect-timeout 2")
 CURL_EXTRA=${CURL_EXTRA:-}
@@ -21,30 +22,61 @@ API_WAIT_SECONDS=${API_WAIT_SECONDS:-300}
 # Sleep between retries while waiting on API
 API_WAIT_SLEEP=${API_WAIT_SLEEP:-2}
 
-UNSEAL_KEYS_FILE="${UNSEAL_KEYS_FILE:-/etc/vault/unseal-keys}"
-UNSEAL_JSON_FILE="${UNSEAL_JSON_FILE:-/etc/vault/unseal.json}"
+UNSEAL_KEYS_FILE="${UNSEAL_KEYS_FILE:-/etc/vault.d/unseal-keys}"
+UNSEAL_JSON_FILE="${UNSEAL_JSON_FILE:-/etc/vault.d/unseal.json}"
 
 log() { printf '%s %s\n' "$(date -Is)" "$*" >&2; }
 
 curl_vault() {
   # shellcheck disable=SC2086
-  curl -sS ${CURL_EXTRA} "$@"
+  local extra_flags="${CURL_EXTRA}"
+  if [[ "${VAULT_SKIP_VERIFY}" == "true" ]]; then
+    extra_flags="${extra_flags} --insecure"
+  fi
+  curl -sS ${extra_flags} "$@"
 }
 
 api_up() {
-  curl_vault -o /dev/null -f "${VAULT_ADDR}/v1/sys/health" >/dev/null 2>&1
+  # Use yq or jq to check if Vault is initialized and reachable
+  local health_json
+  health_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/health" || true)"
+  # If health_json is empty, Vault is not up
+  if [[ -z "$health_json" ]]; then
+    return 1
+  fi
+  # Use yq if available, else fallback to jq
+  if command -v yq >/dev/null 2>&1; then
+    initialized=$(echo "$health_json" | yq -r '.initialized')
+    sealed=$(echo "$health_json" | yq -r '.sealed')
+  else
+    initialized=$(echo "$health_json" | jq -r '.initialized')
+    sealed=$(echo "$health_json" | jq -r '.sealed')
+  fi
+  # Vault is up if initialized is true (even if sealed)
+  if [[ "$initialized" == "true" || "$sealed" == "true" ]]; then
+    return 0
+  fi
+  return 1
 }
 
 is_sealed() {
   # Return 0 (true) if sealed, 1 if not sealed
-  # (Don’t require jq; grep the "sealed" field from /sys/seal-status)
-  local sealed
-  sealed="$(curl_vault -f "${VAULT_ADDR}/v1/sys/seal-status" || true)"
+  local seal_json sealed_status
+  seal_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/seal-status" || true)"
   # If request failed, treat as sealed to keep retry logic simple
-  if [[ -z "${sealed}" ]]; then
+  if [[ -z "$seal_json" ]]; then
     return 0
   fi
-  grep -q '"sealed":true' <<<"${sealed}"
+  if command -v yq >/dev/null 2>&1; then
+    sealed_status=$(echo "$seal_json" | yq -r '.sealed')
+  else
+    sealed_status=$(echo "$seal_json" | jq -r '.sealed')
+  fi
+  if [[ "$sealed_status" == "true" ]]; then
+    return 0
+  else
+    return 1
+  fi
 }
 
 load_keys() {
@@ -56,17 +88,12 @@ load_keys() {
     # One key per line, ignore blanks/comments
     keys_raw="$(sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "${UNSEAL_KEYS_FILE}" | paste -sd, -)"
   elif [[ -f "${UNSEAL_JSON_FILE}" ]]; then
-    # Very lenient parse: pull "unseal_keys_b64" or "unseal_keys_hex" values if present
-    # Match between quotes after those field names; allow spaces.
-    # This is not a full JSON parser but is good enough for Vault's init output.
-    keys_raw="$(grep -oE '"unseal_keys_(b64|hex)"[[:space:]]*:[[:space:]]*\[[^]]+\]' "${UNSEAL_JSON_FILE}" \
-      | head -n1 \
-      | sed -E 's/.*\[(.*)\].*/\1/' \
-      | tr -d '[:space:]' \
-      | tr -d '"' \
-      | tr ',' '\n' \
-      | sed -e '/^[[:space:]]*$/d' \
-      | paste -sd, -)"
+    # Use yq or jq to extract unseal keys from JSON (support keys, keys_base64, unseal_keys_b64, unseal_keys_hex)
+    if command -v yq >/dev/null 2>&1; then
+      keys_raw="$(yq -r '.unseal_keys_b64 // .unseal_keys_hex // .keys_base64 // .keys | join(",")' "${UNSEAL_JSON_FILE}" 2>/dev/null)"
+    else
+      keys_raw="$(jq -r '.unseal_keys_b64 // .unseal_keys_hex // .keys_base64 // .keys | join(",")' "${UNSEAL_JSON_FILE}" 2>/dev/null)"
+    fi
   fi
 
   if [[ -z "${keys_raw}" ]]; then
@@ -121,18 +148,64 @@ main() {
   fi
 
   if ! load_keys; then
-    log "ERROR: No unseal keys found. Provide keys via VAULT_UNSEAL_KEYS, ${UNSEAL_KEYS_FILE}, or ${UNSEAL_JSON_FILE}."
-    exit 1
+    # Check if Vault is not initialized
+    health_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/health" || true)"
+    if [[ -z "$health_json" ]]; then
+      log "ERROR: Could not fetch Vault health to check initialization."
+      exit 1
+    fi
+    if command -v yq >/dev/null 2>&1; then
+      initialized=$(echo "$health_json" | yq -r '.initialized')
+    else
+      initialized=$(echo "$health_json" | jq -r '.initialized')
+    fi
+    if [[ "$initialized" == "false" ]]; then
+      log "Vault is not initialized. Initializing with key shares: 10, key threshold: 3."
+      init_resp="$(curl_vault -s -X PUT -H 'Content-Type: application/json' -d '{"secret_shares":10,"secret_threshold":3}' "${VAULT_ADDR}/v1/sys/init" || true)"
+      if [[ -z "$init_resp" ]]; then
+        log "ERROR: Vault initialization failed."
+        exit 1
+      fi
+      # Save keys to /etc/vault.d/unseal.json
+  echo "$init_resp" > "${UNSEAL_JSON_FILE}"
+  chmod 0600 "${UNSEAL_JSON_FILE}"
+  log "Vault initialized. Unseal keys saved to ${UNSEAL_JSON_FILE}."
+      # Try loading keys again
+      if ! load_keys; then
+        log "ERROR: Failed to load unseal keys after initialization."
+        exit 1
+      fi
+    else
+      log "ERROR: No unseal keys found. Provide keys via VAULT_UNSEAL_KEYS, ${UNSEAL_KEYS_FILE}, or ${UNSEAL_JSON_FILE}."
+      exit 1
+    fi
   fi
 
   if unseal_with_keys; then
-    # Double-check health; a sealed cluster returns 501/503, unsealed active returns 200; standby 429
-    code=$(curl_vault -o /dev/null -w '%{http_code}' -s "${VAULT_ADDR}/v1/sys/health" || true)
-    log "Vault health HTTP status: ${code}"
-    case "${code}" in
-      200|429) log "Success: Vault unsealed (active or standby)."; exit 0 ;;
-      *)       log "WARN: Unexpected health code ${code}, but unseal reported success."; exit 0 ;;
-    esac
+    # Double-check health by parsing JSON
+    health_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/health" || true)"
+    if [[ -z "$health_json" ]]; then
+      log "WARN: Could not fetch Vault health after unseal."
+      exit 0
+    fi
+    if command -v yq >/dev/null 2>&1; then
+      sealed=$(echo "$health_json" | yq -r '.sealed')
+      standby=$(echo "$health_json" | yq -r '.standby')
+    else
+      sealed=$(echo "$health_json" | jq -r '.sealed')
+      standby=$(echo "$health_json" | jq -r '.standby')
+    fi
+    if [[ "$sealed" == "false" ]]; then
+      if [[ "$standby" == "true" ]]; then
+        log "Success: Vault unsealed (standby)."
+      else
+        log "Success: Vault unsealed (active)."
+      fi
+      exit 0
+    else
+      log "WARN: Vault still appears sealed after unseal attempt."
+      exit 0
+    fi
   else
     log "ERROR: Exhausted provided keys and Vault is still sealed."
     exit 3
