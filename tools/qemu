@@ -410,7 +410,7 @@ launch_arm64() {
   fi
 
   # Launch QEMU with proper argument parsing
-  exec qemu-system-aarch64 \
+  echo qemu-system-aarch64 \
     -M virt"${accel_arg}" \
     -cpu "${cpu_type}" \
     -bios "${bios_path}" \
