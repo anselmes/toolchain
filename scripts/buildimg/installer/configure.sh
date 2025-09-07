@@ -18,6 +18,6 @@ configure_system() {
 }
 
 # If script is run directly (not sourced), call the function
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   configure_system "$@"
 fi
