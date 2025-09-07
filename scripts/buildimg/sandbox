@@ -21,7 +21,7 @@ set -euo pipefail
 readonly SCRIPT_NAME=$(basename "$0")
 readonly CONTAINER_NAME="sandbox"
 readonly CONTAINER_IMAGE="ghcr.io/labsonline/devcontainer/lang/rust:24.04"
-readonly WORKSPACE_PATH="$HOME/workspace"
+readonly WORKSPACE_PATH="${HOME}/workspace"
 readonly CONTAINER_WORKSPACE="/home/ubuntu/workspace"
 
 # Color codes for output
@@ -50,7 +50,7 @@ log_error() {
 #
 help() {
     cat << EOF
-Usage: $SCRIPT_NAME [OPTIONS]
+Usage: ${SCRIPT_NAME} [OPTIONS]
 
 A Docker sandbox management utility for development environments.
 
@@ -62,14 +62,14 @@ OPTIONS:
   --help       Show this help message
 
 EXAMPLES:
-  $SCRIPT_NAME --init                    # Create sandbox
-  $SCRIPT_NAME --shell                   # Enter shell
-  $SCRIPT_NAME --exec="cargo build"      # Run command
-  $SCRIPT_NAME --cleanup                 # Clean up
+  ${SCRIPT_NAME} --init                    # Create sandbox
+  ${SCRIPT_NAME} --shell                   # Enter shell
+  ${SCRIPT_NAME} --exec="cargo build"      # Run command
+  ${SCRIPT_NAME} --cleanup                 # Clean up
 
 NOTES:
   - The sandbox runs with privileged access
-  - Host workspace is mounted at $CONTAINER_WORKSPACE
+  - Host workspace is mounted at ${CONTAINER_WORKSPACE}
   - Container runs as root but commands execute as ubuntu user
 
 EOF
@@ -94,11 +94,11 @@ check_docker() {
 # Check if the sandbox container exists and is running
 #
 container_exists() {
-  docker container inspect "$CONTAINER_NAME" &> /dev/null
+  docker container inspect "${CONTAINER_NAME}" &> /dev/null
 }
 
 container_running() {
-  [[ "$(docker container inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null)" == "true" ]]
+  [[ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" == "true" ]]
 }
 
 #
@@ -110,19 +110,19 @@ init_sandbox() {
 
   if container_exists; then
     if container_running; then
-      log_warn "Sandbox container '$CONTAINER_NAME' is already running"
+      log_warn "Sandbox container '${CONTAINER_NAME}' is already running"
       return 0
     else
       log_info "Removing existing stopped container..."
-      docker container rm "$CONTAINER_NAME" &> /dev/null || true
+      docker container rm "${CONTAINER_NAME}" &> /dev/null || true
     fi
   fi
 
-  log_info "Creating sandbox environment with image: $CONTAINER_IMAGE"
+  log_info "Creating sandbox environment with image: ${CONTAINER_IMAGE}"
 
   # Verify workspace directory exists
-  if [[ ! -d "$WORKSPACE_PATH" ]]; then
-    log_error "Workspace directory '$WORKSPACE_PATH' does not exist"
+  if [[ ! -d "${WORKSPACE_PATH}" ]]; then
+    log_error "Workspace directory '${WORKSPACE_PATH}' does not exist"
     exit 1
   fi
 
@@ -132,14 +132,14 @@ init_sandbox() {
     --detach \
     --interactive \
     --tty \
-    --name "$CONTAINER_NAME" \
+    --name "${CONTAINER_NAME}" \
     --user root \
     --cgroupns host \
     --volume /dev:/dev \
     --volume /sys/fs/cgroup:/sys/fs/cgroup:rw \
-    --volume "$WORKSPACE_PATH:$CONTAINER_WORKSPACE" \
-    --workdir "$CONTAINER_WORKSPACE" \
-    "$CONTAINER_IMAGE" \
+    --volume "${WORKSPACE_PATH}:${CONTAINER_WORKSPACE}" \
+    --workdir "${CONTAINER_WORKSPACE}" \
+    "${CONTAINER_IMAGE}" \
     /lib/systemd/systemd
 
   # Wait for container to be ready
@@ -166,7 +166,7 @@ enter_shell() {
   fi
 
   log_info "Entering sandbox shell..."
-  docker container exec --user ubuntu --interactive --tty "$CONTAINER_NAME" /bin/zsh -l
+  docker container exec --user ubuntu --interactive --tty "${CONTAINER_NAME}" /bin/zsh -l
 }
 
 #
@@ -182,8 +182,8 @@ execute_command() {
     exit 1
   fi
 
-  log_info "Executing command in sandbox: $command"
-  docker container exec --user ubuntu "$CONTAINER_NAME" /bin/bash -c "$command"
+  log_info "Executing command in sandbox: ${command}"
+  docker container exec --user ubuntu "${CONTAINER_NAME}" /bin/bash -c "${command}"
 }
 
 #
@@ -200,7 +200,7 @@ cleanup_sandbox() {
   log_info "Cleaning up sandbox environment..."
 
   if container_running; then
-    docker container stop "$CONTAINER_NAME" &> /dev/null || true
+    docker container stop "${CONTAINER_NAME}" &> /dev/null || true
     log_info "Sandbox container stopped successfully"
   else
     log_info "Container was already stopped"
@@ -236,7 +236,7 @@ parse_arguments() {
         ;;
       --exec=*)
         exec_command="${1#*=}"
-        if [[ -z "$exec_command" ]]; then
+        if [[ -z "${exec_command}" ]]; then
           log_error "No command provided for --exec option"
           exit 1
         fi
@@ -258,19 +258,19 @@ parse_arguments() {
   done
 
   # Execute based on flags (order matters)
-  if [[ "$init_flag" == true ]]; then
+  if [[ "${init_flag}" == true ]]; then
     init_sandbox
   fi
 
-  if [[ "$shell_flag" == true ]]; then
+  if [[ "${shell_flag}" == true ]]; then
     enter_shell
   fi
 
-  if [[ -n "$exec_command" ]]; then
-    execute_command "$exec_command"
+  if [[ -n "${exec_command}" ]]; then
+    execute_command "${exec_command}"
   fi
 
-  if [[ "$cleanup_flag" == true ]]; then
+  if [[ "${cleanup_flag}" == true ]]; then
     cleanup_sandbox
   fi
 }

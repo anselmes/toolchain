@@ -16,8 +16,9 @@ KEYWORDS = {
     "Python": ["python", "script", "argparse", "json"],
     "Security": ["LUKS", "encryption", "SOPS", "cert-manager"],
     "Containers": ["docker", "podman", "k8s", "container"],
-    "General": []
+    "General": [],
 }
+
 
 def infer_category(title, message_texts):
     content = title.lower() + " " + " ".join(message_texts).lower()
@@ -26,9 +27,11 @@ def infer_category(title, message_texts):
             return category
     return "General"
 
+
 def sanitize_filename(name: str) -> str:
     name = re.sub(r'[\\/*?:"<>|]', "_", name).strip()
     return name[:100]
+
 
 def parse_chat_export(input_path: Path, output_dir: Path):
     with open(input_path, "r", encoding="utf-8") as f:
@@ -60,13 +63,7 @@ def parse_chat_export(input_path: Path, output_dir: Path):
         date_str = dt.strftime("%Y-%m-%d %H:%M:%S")
 
         category = infer_category(title, content_texts)
-        output_path = (
-            output_dir
-            / year
-            / month
-            / category
-            / f"{title}.md"
-        )
+        output_path = output_dir / year / month / category / f"{title}.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(output_path, "w", encoding="utf-8") as out:
@@ -87,10 +84,15 @@ def parse_chat_export(input_path: Path, output_dir: Path):
                             text = part.get("text") or json.dumps(part, indent=2)
                             out.write(f"{prefix}\n\n{text.strip()}\n\n---\n\n")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert ChatGPT export JSON to Markdown files.")
+    parser = argparse.ArgumentParser(
+        description="Convert ChatGPT export JSON to Markdown files."
+    )
     parser.add_argument("--input", required=True, help="Path to conversations.json")
-    parser.add_argument("--output", required=True, help="Directory to write markdown files")
+    parser.add_argument(
+        "--output", required=True, help="Directory to write markdown files"
+    )
 
     args = parser.parse_args()
     input_path = Path(args.input).expanduser().resolve()

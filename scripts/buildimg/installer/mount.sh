@@ -3,7 +3,7 @@
 mount_chroot() {
   local mnt="${1}"
 
-  [ -z "$mnt" ] && mnt="/mnt"
+  [ -z "${mnt}" ] && mnt="/mnt"
 
   [ -d "${mnt}/dev" ]   || sudo -E mkdir -m 0755 "${mnt}/dev"
   [ -d "${mnt}/root" ]  || sudo -E mkdir -m 0700 "${mnt}/root"
@@ -43,9 +43,9 @@ mount_chroot() {
 umount_chroot() {
   local mnt="${1}"
 
-  [ -z "$mnt" ] && mnt="/mnt"
+  [ -z "${mnt}" ] && mnt="/mnt"
 
-  echo "Unmounting chroot environment at $mnt..."
+  echo "Unmounting chroot environment at ${mnt}..."
 
   # Unmount in reverse order
   mountpoint -q "${mnt}/run" && {

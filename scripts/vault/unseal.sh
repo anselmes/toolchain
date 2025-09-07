@@ -33,7 +33,7 @@ curl_vault() {
   if [[ "${VAULT_SKIP_VERIFY}" == "true" ]]; then
     extra_flags="${extra_flags} --insecure"
   fi
-  curl -sS ${extra_flags} "$@"
+  curl -sS "${extra_flags}" "$@"
 }
 
 api_up() {
@@ -41,19 +41,19 @@ api_up() {
   local health_json
   health_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/health" || true)"
   # If health_json is empty, Vault is not up
-  if [[ -z "$health_json" ]]; then
+  if [[ -z "${health_json}" ]]; then
     return 1
   fi
   # Use yq if available, else fallback to jq
   if command -v yq >/dev/null 2>&1; then
-    initialized=$(echo "$health_json" | yq -r '.initialized')
-    sealed=$(echo "$health_json" | yq -r '.sealed')
+    initialized=$(echo "${health_json}" | yq -r '.initialized')
+    sealed=$(echo "${health_json}" | yq -r '.sealed')
   else
-    initialized=$(echo "$health_json" | jq -r '.initialized')
-    sealed=$(echo "$health_json" | jq -r '.sealed')
+    initialized=$(echo "${health_json}" | jq -r '.initialized')
+    sealed=$(echo "${health_json}" | jq -r '.sealed')
   fi
   # Vault is up if initialized is true (even if sealed)
-  if [[ "$initialized" == "true" || "$sealed" == "true" ]]; then
+  if [[ "${initialized}" == "true" || "${sealed}" == "true" ]]; then
     return 0
   fi
   return 1
@@ -64,15 +64,15 @@ is_sealed() {
   local seal_json sealed_status
   seal_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/seal-status" || true)"
   # If request failed, treat as sealed to keep retry logic simple
-  if [[ -z "$seal_json" ]]; then
+  if [[ -z "${seal_json}" ]]; then
     return 0
   fi
   if command -v yq >/dev/null 2>&1; then
-    sealed_status=$(echo "$seal_json" | yq -r '.sealed')
+    sealed_status=$(echo "${seal_json}" | yq -r '.sealed')
   else
-    sealed_status=$(echo "$seal_json" | jq -r '.sealed')
+    sealed_status=$(echo "${seal_json}" | jq -r '.sealed')
   fi
-  if [[ "$sealed_status" == "true" ]]; then
+  if [[ "${sealed_status}" == "true" ]]; then
     return 0
   else
     return 1
@@ -150,24 +150,24 @@ main() {
   if ! load_keys; then
     # Check if Vault is not initialized
     health_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/health" || true)"
-    if [[ -z "$health_json" ]]; then
+    if [[ -z "${health_json}" ]]; then
       log "ERROR: Could not fetch Vault health to check initialization."
       exit 1
     fi
     if command -v yq >/dev/null 2>&1; then
-      initialized=$(echo "$health_json" | yq -r '.initialized')
+      initialized=$(echo "${health_json}" | yq -r '.initialized')
     else
-      initialized=$(echo "$health_json" | jq -r '.initialized')
+      initialized=$(echo "${health_json}" | jq -r '.initialized')
     fi
-    if [[ "$initialized" == "false" ]]; then
+    if [[ "${initialized}" == "false" ]]; then
       log "Vault is not initialized. Initializing with key shares: 10, key threshold: 3."
       init_resp="$(curl_vault -s -X PUT -H 'Content-Type: application/json' -d '{"secret_shares":10,"secret_threshold":3}' "${VAULT_ADDR}/v1/sys/init" || true)"
-      if [[ -z "$init_resp" ]]; then
+      if [[ -z "${init_resp}" ]]; then
         log "ERROR: Vault initialization failed."
         exit 1
       fi
       # Save keys to /opt/vault/unseal.json
-  echo "$init_resp" > "${UNSEAL_JSON_FILE}"
+  echo "${init_resp}" > "${UNSEAL_JSON_FILE}"
   chmod 0600 "${UNSEAL_JSON_FILE}"
   log "Vault initialized. Unseal keys saved to ${UNSEAL_JSON_FILE}."
       # Try loading keys again
@@ -184,19 +184,19 @@ main() {
   if unseal_with_keys; then
     # Double-check health by parsing JSON
     health_json="$(curl_vault -s "${VAULT_ADDR}/v1/sys/health" || true)"
-    if [[ -z "$health_json" ]]; then
+    if [[ -z "${health_json}" ]]; then
       log "WARN: Could not fetch Vault health after unseal."
       exit 0
     fi
     if command -v yq >/dev/null 2>&1; then
-      sealed=$(echo "$health_json" | yq -r '.sealed')
-      standby=$(echo "$health_json" | yq -r '.standby')
+      sealed=$(echo "${health_json}" | yq -r '.sealed')
+      standby=$(echo "${health_json}" | yq -r '.standby')
     else
-      sealed=$(echo "$health_json" | jq -r '.sealed')
-      standby=$(echo "$health_json" | jq -r '.standby')
+      sealed=$(echo "${health_json}" | jq -r '.sealed')
+      standby=$(echo "${health_json}" | jq -r '.standby')
     fi
-    if [[ "$sealed" == "false" ]]; then
-      if [[ "$standby" == "true" ]]; then
+    if [[ "${sealed}" == "false" ]]; then
+      if [[ "${standby}" == "true" ]]; then
         log "Success: Vault unsealed (standby)."
       else
         log "Success: Vault unsealed (active)."

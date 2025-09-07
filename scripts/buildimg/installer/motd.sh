@@ -15,30 +15,30 @@ setup_motd() {
   local STATIC_MOTD="/etc/motd"
 
   # Validate banner type
-  case "$BANNER_TYPE" in
+  case "${BANNER_TYPE}" in
     ubuntu|vyos|maas|kcm)
-      echo "Setting up MOTD with '$BANNER_TYPE' banner..."
+      echo "Setting up MOTD with '${BANNER_TYPE}' banner..."
       ;;
     *)
-      echo "Warning: Unknown banner type '$BANNER_TYPE', using 'ubuntu' as default"
+      echo "Warning: Unknown banner type '${BANNER_TYPE}', using 'ubuntu' as default"
       BANNER_TYPE="ubuntu"
       ;;
   esac
 
   # Create motd scripts directory
-  mkdir -p "$MOTD_SCRIPTS_DIR"
+  mkdir -p "${MOTD_SCRIPTS_DIR}"
 
   # Disable default Ubuntu MOTD scripts that we don't want
   for script in 10-help-text 50-motd-news 80-esm 95-hwe-eol; do
-    if [ -f "$MOTD_DIR/$script" ]; then
-      chmod -x "$MOTD_DIR/$script" 2>/dev/null || true
+    if [[ -f "${MOTD_DIR}/${script}" ]]; then
+      chmod -x "${MOTD_DIR}/${script}" 2>/dev/null || true
     fi
   done
 
   # Create our custom MOTD header (00-header) based on banner type
-  case "$BANNER_TYPE" in
+  case "${BANNER_TYPE}" in
     ubuntu)
-      cat > "$MOTD_DIR/00-header" << 'EOF'
+      cat > "${MOTD_DIR}/00-header" << 'EOF'
 #!/bin/sh
 
 printf "\n"
@@ -58,7 +58,7 @@ EOF
       ;;
 
     vyos)
-      cat > "$MOTD_DIR/00-header" << 'EOF'
+      cat > "${MOTD_DIR}/00-header" << 'EOF'
 #!/bin/sh
 
 printf "\n"
@@ -78,7 +78,7 @@ EOF
       ;;
 
     maas)
-      cat > "$MOTD_DIR/00-header" << 'EOF'
+      cat > "${MOTD_DIR}/00-header" << 'EOF'
 #!/bin/sh
 
 printf "\n"
@@ -98,7 +98,7 @@ EOF
       ;;
 
     kcm)
-      cat > "$MOTD_DIR/00-header" << 'EOF'
+      cat > "${MOTD_DIR}/00-header" << 'EOF'
 #!/bin/sh
 
 printf "\n"
@@ -119,7 +119,7 @@ EOF
   esac
 
   # Create system information script (01-sysinfo)
-  cat > "$MOTD_DIR/01-sysinfo" << 'EOF'
+  cat > "${MOTD_DIR}/01-sysinfo" << 'EOF'
 #!/bin/bash
 
 # System Information
@@ -134,7 +134,7 @@ printf "\n"
 EOF
 
   # Create hardware information script (02-hardware)
-  cat > "$MOTD_DIR/02-hardware" << 'EOF'
+  cat > "${MOTD_DIR}/02-hardware" << 'EOF'
 #!/bin/bash
 
 # Hardware Information
@@ -157,7 +157,7 @@ printf "\n"
 EOF
 
   # Create storage information script (03-storage)
-  cat > "$MOTD_DIR/03-storage" << 'EOF'
+  cat > "${MOTD_DIR}/03-storage" << 'EOF'
 #!/bin/bash
 
 # Storage Information
@@ -169,7 +169,7 @@ printf "\n"
 EOF
 
   # Create network information script (04-network)
-  cat > "$MOTD_DIR/04-network" << 'EOF'
+  cat > "${MOTD_DIR}/04-network" << 'EOF'
 #!/bin/bash
 
 # Network Information
@@ -187,7 +187,7 @@ printf "\n"
 EOF
 
   # Create services status script (06-services)
-  cat > "$MOTD_DIR/06-services" << 'EOF'
+  cat > "${MOTD_DIR}/06-services" << 'EOF'
 #!/bin/bash
 
 # Services Status
@@ -208,9 +208,9 @@ printf "\n"
 EOF
 
   # Create footer with helpful information (99-footer) based on banner type
-  case "$BANNER_TYPE" in
+  case "${BANNER_TYPE}" in
     ubuntu)
-      cat > "$MOTD_DIR/99-footer" << 'EOF'
+      cat > "${MOTD_DIR}/99-footer" << 'EOF'
 #!/bin/sh
 
 cat << 'FOOTER'
@@ -234,7 +234,7 @@ EOF
       ;;
 
     vyos)
-      cat > "$MOTD_DIR/99-footer" << 'EOF'
+      cat > "${MOTD_DIR}/99-footer" << 'EOF'
 #!/bin/sh
 
 cat << 'FOOTER'
@@ -259,7 +259,7 @@ EOF
       ;;
 
     maas)
-      cat > "$MOTD_DIR/99-footer" << 'EOF'
+      cat > "${MOTD_DIR}/99-footer" << 'EOF'
 #!/bin/sh
 
 cat << 'FOOTER'
@@ -284,7 +284,7 @@ EOF
       ;;
 
     kcm)
-      cat > "$MOTD_DIR/99-footer" << 'EOF'
+      cat > "${MOTD_DIR}/99-footer" << 'EOF'
 #!/bin/sh
 
 cat << 'FOOTER'
@@ -311,10 +311,10 @@ EOF
   esac
 
   # Make all scripts executable
-  chmod +x "$MOTD_DIR"/*
+  chmod +x "${MOTD_DIR}"/*
 
   # Update /etc/issue for console login banner based on banner type
-  case "$BANNER_TYPE" in
+  case "${BANNER_TYPE}" in
     ubuntu)
       cat > /etc/issue << 'EOF'
 Ubuntu System \n \l
@@ -365,7 +365,7 @@ EOF
   esac
 
   # Update /etc/issue.net for SSH banner based on banner type
-  case "$BANNER_TYPE" in
+  case "${BANNER_TYPE}" in
     ubuntu)
       cat > /etc/issue.net << 'EOF'
 ================================================================================
@@ -419,15 +419,15 @@ EOF
       ;;
   esac
 
-  echo "✅ MOTD configuration completed successfully with '$BANNER_TYPE' banner!"
+  echo "✅ MOTD configuration completed successfully with${'$BANNER_TY}PE' banner!"
   echo "📄 The following files have been configured:"
-  echo "   - $MOTD_DIR/00-header (Custom $BANNER_TYPE banner)"
-  echo "   - $MOTD_DIR/01-sysinfo (System information)"
-  echo "   - $MOTD_DIR/02-hardware (Hardware details)"
-  echo "   - $MOTD_DIR/03-storage (Storage information)"
-  echo "   - $MOTD_DIR/04-network (Network interfaces)"
-  echo "   - $MOTD_DIR/06-services (Service status)"
-  echo "   - $MOTD_DIR/99-footer ($BANNER_TYPE-specific commands and tips)"
+  echo "   - ${MOTD_DIR}/00-header (Custom ${BANNER_TYPE} banner)"
+  echo "   - ${MOTD_DIR}/01-sysinfo (System information)"
+  echo "   - ${MOTD_DIR}/02-hardware (Hardware details)"
+  echo "   - ${MOTD_DIR}/03-storage (Storage information)"
+  echo "   - ${MOTD_DIR}/04-network (Network interfaces)"
+  echo "   - ${MOTD_DIR}/06-services (Service status)"
+  echo "   - ${MOTD_DIR}/99-footer (${BANNER_TYPE}-specific commands and tips)"
   echo "   - /etc/issue (Console login banner)"
   echo "   - /etc/issue.net (SSH login banner)"
   echo ""
@@ -460,7 +460,7 @@ show_usage() {
 }
 
 # If script is run directly (not sourced), call the function
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   case "$1" in
     --help|-h)
       show_usage
