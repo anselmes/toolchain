@@ -1,0 +1,218 @@
+[ -n "$SCRIPTSDIR" ] && {
+  . "${SCRIPTSDIR}/installer/storage/mbr"
+  . "${SCRIPTSDIR}/installer/storage/gpt"
+  . "${SCRIPTSDIR}/installer/storage/blk"
+  . "${SCRIPTSDIR}/installer/storage/mtd"
+}
+
+create_fs_image() {
+  local FS="$1"
+  local OS="$2"
+
+  ls -l "$FS" || {
+    echo "Creating new filesystem image: $FS"
+    truncate -s 8G "$FS"
+  }
+
+  # mount filesystem image
+  DEV="$(losetup -l | grep "$FS" | awk '{print $1}')" || DEV="$(sudo losetup -Pf --show "$FS")"
+
+  echo "Creating partitions on $DEV"
+  create_filesystem "$DEV" "${DEV}p2" "${DEV}p3" "$OS"
+
+  # FIXME: echo "Creating EFI filesystem on $DEV"
+  if ! sudo blkid "${DEV}p1" >/dev/null 2>&1; then
+    sudo -E mkfs.vfat -F 32 "${DEV}p1"
+  else
+    echo "${DEV}p1 already partitioned, skipping mkfs.vfat"
+  fi
+}
+
+create_filesystem() {
+  local DEV="$1"
+  local BOOTPART="$2"
+  local ROOTPART="$3"
+  local OS="$4"
+
+  sudo mkdir -p /etc/exports.d
+
+  create_partitions "$DEV"      # create partitions
+  create_root_pool "$ROOTPART"  # create root pool
+  create_boot_pool "$BOOTPART"  # create boot pool
+
+  zpool list
+
+  create_filesystem_datasets bpool/BOOT rpool/ROOT rpool/USERDATA # filesystem datasets container
+  create_os_datasets rpool/ROOT bpool/BOOT "$OS"                  # filesystem datasets for boot and root
+  create_default_datasets rpool/ROOT "$OS"                        # datasets
+  create_user_datasets rpool/USERDATA "$OS"                       # users datasets
+  create_additional_datasets rpool/ROOT "$OS"                     # additional datasets
+
+  zfs list
+
+  # fix permissions
+  sudo chmod 0700 /mnt/root || true
+  sudo chmod 1777 /mnt/var/tmp /mnt/tmp || true
+  sudo chown -R $OS: /home/$OS || true
+  sudo chown -R admin: /home/admin || true
+}
+
+# Function to check if disk contains partitions
+check_disk_partitions() {
+  local disk="$1"
+  local partition_count=0
+
+  if [ -b "$disk" ]; then
+    # Use lsblk to count partitions
+    partition_count=$(lsblk -ln -o NAME "$disk" | tail -n +2 | wc -l)
+    echo "Disk $disk has $partition_count partition(s)"
+    return $partition_count
+  else
+    echo "Error: $disk is not a valid block device"
+    return 1
+  fi
+}
+
+# Function to check for BOOT partition
+check_boot_partition() {
+  echo "Checking for BOOT partitions..."
+  local boot_partitions=()
+
+  # Check for /boot mount point
+  local boot_device=$(findmnt -n -o SOURCE /boot 2>/dev/null || true)
+  if [ -n "$boot_device" ]; then
+    boot_partitions+=("$boot_device")
+    local fstype=$(findmnt -n -o FSTYPE /boot 2>/dev/null || "unknown")
+    echo "Found mounted /boot partition: $boot_device (filesystem: $fstype)"
+
+    # Validate filesystem type based on environment
+    if [ "$IS_BAREMETAL" = true ] && [ "$fstype" != "zfs" ]; then
+      echo "Warning: Baremetal system should use ZFS for /boot, found: $fstype"
+    elif [ "$IS_VIRTUAL" = true ] && [ "$fstype" != "ext4" ]; then
+      echo "Warning: Virtual machine should use ext4 for /boot, found: $fstype"
+    fi
+  fi
+
+  # Look for partitions labeled as boot
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
+      local part="/dev/$line"
+      if [[ ! " ${boot_partitions[*]} " =~ " ${part} " ]]; then
+        boot_partitions+=("$part")
+      fi
+    fi
+  done < <(lsblk -ln -o NAME,PARTTYPENAME | grep -i "boot" | awk '{print $1}' || true)
+
+  if [ ${#boot_partitions[@]} -gt 0 ]; then
+    echo "Found BOOT partition(s): ${boot_partitions[*]}"
+    BOOT_PARTITIONS=("${boot_partitions[@]}")
+    return 0
+  else
+    echo "No BOOT partitions found"
+    BOOT_PARTITIONS=()
+    return 1
+  fi
+}
+
+# Function to check if disk is safe to modify
+is_disk_safe_to_modify() {
+  local disk="$1"
+  local clean_disk=$(echo "$disk" | sed 's|/dev/||' | sed 's|[0-9]*$||')
+
+  # Check if disk is used by protected ZFS pools
+  if [ "$IS_BAREMETAL" = true ]; then
+    for pool_disk in "${POOL_DISKS[@]}"; do
+      if [ "$clean_disk" = "$pool_disk" ]; then
+        echo "Disk $disk is used by ZFS pool - NOT SAFE to modify"
+        return 1
+      fi
+    done
+  fi
+
+  # Check if disk is used by Ceph
+  for ceph_disk in "${CEPH_DISKS[@]}"; do
+    if [ "$clean_disk" = "$ceph_disk" ]; then
+      echo "Disk $disk is used by Ceph - NOT SAFE to modify"
+      return 1
+    fi
+  done
+
+  echo "Disk $disk is SAFE to modify"
+  return 0
+}
+
+# Main disk checking function
+check_parts() {
+  echo "=== Starting disk and partition checks ==="
+
+  # Initialize arrays
+  EFI_PARTITIONS=()
+  BOOT_PARTITIONS=()
+  EXISTING_POOLS=()
+  POOL_DISKS=()
+  CEPH_DISKS=()
+
+  # Check for EFI partition
+  check_efi_partition
+
+  # Check for BOOT partition
+  check_boot_partition
+
+  # Check ZFS pools (baremetal only)
+  check_zfs_pools
+
+  # Check Ceph disks
+  check_ceph_disks
+
+  # List available disks and check each one
+  echo "=== Available disks ==="
+  while IFS= read -r disk; do
+    if [ -n "$disk" ]; then
+      echo "Checking disk: $disk"
+      check_disk_partitions "$disk"
+      is_disk_safe_to_modify "$disk"
+      echo "---"
+    fi
+  done < <(lsblk -nd -o NAME | grep -E '^[a-z]+$' | sed 's|^|/dev/|')
+
+  echo "=== Disk checks complete ==="
+}
+
+# Function to get first available disk
+get_first_available_disk() {
+  local exclude_list=("${EXCLUDE_DISKS[@]}")
+  local available_disks=()
+
+  echo "Looking for first available disk..."
+
+  # Get all disks and filter out excluded ones
+  while IFS= read -r disk; do
+    if [ -n "$disk" ]; then
+      local clean_disk=$(echo "$disk" | sed 's|/dev/||')
+      local is_excluded=false
+
+      # Check if disk is in exclude list
+      for excluded in "${exclude_list[@]}"; do
+        if [ "$clean_disk" = "$excluded" ]; then
+          echo "Disk $disk excluded by exclude list"
+          is_excluded=true
+          break
+        fi
+      done
+
+      # Check if disk is safe to modify
+      if [ "$is_excluded" = false ] && is_disk_safe_to_modify "$disk"; then
+        available_disks+=("$disk")
+      fi
+    fi
+  done < <(lsblk -nd -o NAME | grep -E '^[a-z]+$' | sed 's|^|/dev/|')
+
+  if [ ${#available_disks[@]} -gt 0 ]; then
+    echo "First available disk: ${available_disks[0]}"
+    echo "${available_disks[0]}"
+    return 0
+  else
+    echo "Error: No available disks found"
+    return 1
+  fi
+}

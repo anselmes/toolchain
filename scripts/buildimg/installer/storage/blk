@@ -1,0 +1,497 @@
+create_boot_pool() {
+  local PART="$1"
+
+  # check if active
+  if is_active "bpool"; then
+    echo "bpool is already active, skipping creation."
+    return
+  fi
+
+  # create boot pool
+  sudo -E zpool create \
+    -o ashift=12 \
+    -o autotrim=on \
+    -o cachefile=/etc/zfs/zpool.cache \
+    -o compatibility=grub2 \
+    -o feature@livelist=enabled \
+    -o feature@zpool_checkpoint=enabled \
+    -O devices=off \
+    -O acltype=posixacl -O xattr=sa \
+    -O compression=lz4 \
+    -O normalization=formD \
+    -O relatime=on \
+    -O canmount=off -O mountpoint=/boot -R /mnt \
+    bpool "$PART" || {
+      echo "Failed to create bpool, attempting to import..."
+      sudo zpool import -f bpool -R /mnt
+      return
+    }
+}
+
+create_root_pool() {
+  local PART="$1"
+
+  # check if active
+  if is_active "rpool"; then
+    echo "rpool is already active, skipping creation."
+    return
+  fi
+
+  # create root pool
+  sudo -E zpool create \
+    -o ashift=12 \
+    -o autotrim=on \
+    -O acltype=posixacl -O xattr=sa -O dnodesize=auto \
+    -O compression=lz4 \
+    -O normalization=formD \
+    -O relatime=on \
+    -O canmount=off -O mountpoint=/ -R /mnt \
+    rpool "$PART" || {
+      echo "Failed to create rpool, attempting to import..."
+      sudo zpool import -f rpool -R /mnt
+      return
+    }
+}
+
+create_filesystem_datasets() {
+  local BOOTDATA="$1"
+  local ROOTDATA="$2"
+  local USERDATA="$3"
+
+  # create filesystem datasets container
+  does_exists "${BOOTDATA}" || sudo -E zfs create -o canmount=off -o mountpoint=none "${BOOTDATA}"
+  does_exists "${ROOTDATA}" || sudo -E zfs create -o canmount=off -o mountpoint=none "${ROOTDATA}"
+  does_exists "${USERDATA}" || sudo -E zfs create -o canmount=off -o mountpoint=none "${USERDATA}"
+}
+
+create_os_datasets() {
+  local ROOTDATA="$1"
+  local BOOTDATA="$2"
+  local OS="$3"
+
+  # create filesystem datasets for boot and root
+  does_exists "${ROOTDATA}/${OS}" || sudo -E zfs create \
+    -o mountpoint=/ \
+    -o com.ubuntu.zsys:bootfs=yes \
+    -o com.ubuntu.zsys:last-used=$(date +%s) \
+    "${ROOTDATA}/${OS}"
+  does_exists "${BOOTDATA}/${OS}" || sudo -E zfs create -o mountpoint=/boot "${BOOTDATA}/${OS}"
+}
+
+create_default_datasets() {
+  local ROOTDATA="$1"
+  local OS="$2"
+
+  # create datasets
+  does_exists "${ROOTDATA}/${OS}/usr" || sudo -E zfs create -o canmount=off -o com.ubuntu.zsys:bootfs=no "${ROOTDATA}/${OS}/usr"
+  does_exists "${ROOTDATA}/${OS}/var" || sudo -E zfs create -o canmount=off -o com.ubuntu.zsys:bootfs=no "${ROOTDATA}/${OS}/var"
+
+  does_exists "${ROOTDATA}/${OS}/var/lib" || sudo -E zfs create "${ROOTDATA}/${OS}/var/lib"
+  does_exists "${ROOTDATA}/${OS}/var/log" || sudo -E zfs create "${ROOTDATA}/${OS}/var/log"
+
+  does_exists "${ROOTDATA}/${OS}/var/spool" || sudo -E zfs create "${ROOTDATA}/${OS}/var/spool"
+}
+
+create_user_datasets() {
+  local USERDATA="$1"
+  local OS="$2"
+
+  # create users datasets
+  does_exists "${USERDATA}/root" || sudo -E zfs create -o canmount=on -o mountpoint=/root "${USERDATA}/root"
+
+  does_exists "${USERDATA}/${OS}" || sudo -E zfs create -o canmount=on -o mountpoint="/home/${OS}" "${USERDATA}/${OS}"
+  does_exists "${USERDATA}/admin" || sudo -E zfs create -o canmount=on -o mountpoint=/home/admin "${USERDATA}/admin"
+}
+
+create_additional_datasets() {
+  local ROOTDATA="$1"
+  local OS="$2"
+
+  # additional datasets
+  does_exists "${ROOTDATA}/${OS}/srv" || sudo -E zfs create -o com.ubuntu.zsys:bootfs=no "${ROOTDATA}/${OS}/srv"
+  does_exists "${ROOTDATA}/${OS}/tmp" || sudo -E zfs create -o com.ubuntu.zsys:bootfs=no "${ROOTDATA}/${OS}/tmp"
+
+  does_exists "${ROOTDATA}/${OS}/usr/local" || sudo -E zfs create "${ROOTDATA}/${OS}/usr/local"
+  does_exists "${ROOTDATA}/${OS}/var/cache" || sudo -E zfs create "${ROOTDATA}/${OS}/var/cache"
+
+  does_exists "${ROOTDATA}/${OS}/var/lib/AccountsService" || sudo -E zfs create "${ROOTDATA}/${OS}/var/lib/AccountsService"
+  does_exists "${ROOTDATA}/${OS}/var/lib/NetworkManager"  || sudo -E zfs create "${ROOTDATA}/${OS}/var/lib/NetworkManager"
+
+  does_exists "${ROOTDATA}/${OS}/var/lib/apt"         || sudo -E zfs create "${ROOTDATA}/${OS}/var/lib/apt"
+  does_exists "${ROOTDATA}/${OS}/var/lib/containerd"  || sudo -E zfs create "${ROOTDATA}/${OS}/var/lib/containerd"
+  does_exists "${ROOTDATA}/${OS}/var/lib/docker"      || sudo -E zfs create "${ROOTDATA}/${OS}/var/lib/docker"
+  does_exists "${ROOTDATA}/${OS}/var/lib/dpkg"        || sudo -E zfs create "${ROOTDATA}/${OS}/var/lib/dpkg"
+
+  does_exists "${ROOTDATA}/${OS}/var/mail"  || sudo -E zfs create "${ROOTDATA}/${OS}/var/mail"
+  does_exists "${ROOTDATA}/${OS}/var/snap"  || sudo -E zfs create "${ROOTDATA}/${OS}/var/snap"
+  does_exists "${ROOTDATA}/${OS}/var/tmp"   || sudo -E zfs create "${ROOTDATA}/${OS}/var/tmp"
+  does_exists "${ROOTDATA}/${OS}/var/www"   || sudo -E zfs create "${ROOTDATA}/${OS}/var/www"
+}
+
+fix_filesystem_mount_ordering() {
+  local BOOTDATA="$1"
+  local ROOTDATA="$2"
+  local OS="$3"
+
+  # fix filesystem mount ordering
+  sudo mkdir -p /etc/zfs/zfs-list.cache
+  sudo touch /etc/zfs/zfs-list.cache/bpool
+  sudo touch /etc/zfs/zfs-list.cache/rpool
+  zed -F &
+  # FIXME: force cache update
+  # zfs set canmount=on ${BOOTDATA}/${OS}
+  # zfs set canmount=on ${ROOTDATA}/${OS}
+  jobs -p | xargs -r kill
+  sudo sed -Ei "s|/mnt/?|/|" /etc/zfs/zfs-list.cache/*
+}
+
+is_active() {
+  local POOL="$1"
+
+  # check if pool is active
+  if sudo zpool list | grep -q "^${POOL} "; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+does_exists() {
+  local DATASET="$1"
+
+  # check if dataset exists
+  if sudo zfs list "${DATASET}" >/dev/null 2>&1; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Function to check for ZFS pools (baremetal only)
+check_zfs_pools() {
+  if [ "$IS_BAREMETAL" != true ]; then
+    echo "Skipping ZFS pool check (not baremetal)"
+    return 0
+  fi
+
+  echo "Checking for ZFS pools..."
+  PROTECTED_POOLS=("bpool" "rpool" "upool" "tank")
+  EXISTING_POOLS=()
+  POOL_DISKS=()
+
+  if command -v zpool >/dev/null 2>&1; then
+    # Get list of existing pools
+    while IFS= read -r pool; do
+      if [ -n "$pool" ]; then
+        EXISTING_POOLS+=("$pool")
+        echo "Found ZFS pool: $pool"
+
+        # Get disks used by this pool
+        while IFS= read -r disk; do
+          if [ -n "$disk" ]; then
+            # Extract device name (remove partition numbers and path prefixes)
+            local clean_disk=$(echo "$disk" | sed 's|/dev/||' | sed 's|[0-9]*$||')
+            if [[ ! " ${POOL_DISKS[*]} " =~ " ${clean_disk} " ]]; then
+              POOL_DISKS+=("$clean_disk")
+            fi
+          fi
+        done < <(zpool status "$pool" | grep -E "^\s+[a-z]" | awk '{print $1}' | grep -v "mirror\|raidz" || true)
+      fi
+    done < <(zpool list -H -o name 2>/dev/null || true)
+
+    # Check for protected pools
+    for pool in "${PROTECTED_POOLS[@]}"; do
+      if [[ " ${EXISTING_POOLS[*]} " =~ " ${pool} " ]]; then
+        echo "Warning: Protected pool '$pool' exists - disks will not be modified"
+      fi
+    done
+
+    if [ ${#POOL_DISKS[@]} -gt 0 ]; then
+      echo "Disks in use by ZFS pools: ${POOL_DISKS[*]}"
+    fi
+  else
+    echo "ZFS tools not available"
+  fi
+}
+
+# Function to check for Ceph cluster disks
+check_ceph_disks() {
+  echo "Checking for Ceph cluster disks..."
+  CEPH_DISKS=()
+
+  # Check if ceph is installed and running
+  if command -v ceph >/dev/null 2>&1; then
+    # Get OSD disks
+    while IFS= read -r line; do
+      if [ -n "$line" ]; then
+        local disk=$(echo "$line" | awk '{print $1}' | sed 's|/dev/||')
+        CEPH_DISKS+=("$disk")
+        echo "Found Ceph OSD disk: $disk"
+      fi
+    done < <(ceph-volume lvm list --format json 2>/dev/null | jq -r '.[].devices[]?' 2>/dev/null || true)
+  fi
+
+  # Also check for mounted ceph filesystems
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
+      local device=$(echo "$line" | awk '{print $1}' | sed 's|/dev/||')
+      if [[ ! " ${CEPH_DISKS[*]} " =~ " ${device} " ]]; then
+        CEPH_DISKS+=("$device")
+        echo "Found Ceph mounted device: $device"
+      fi
+    fi
+  done < <(mount | grep ceph || true)
+
+  if [ ${#CEPH_DISKS[@]} -gt 0 ]; then
+    echo "Disks in use by Ceph: ${CEPH_DISKS[*]}"
+    echo "Warning: Ceph disks will not be modified"
+  else
+    echo "No Ceph disks found"
+  fi
+}
+
+# Function to setup disk layout for tank pool (baremetal only)
+setup_tank_pool_layout() {
+  if [ "$IS_BAREMETAL" != true ]; then
+    echo "Tank pool setup only applicable for baremetal"
+    return 0
+  fi
+
+  echo "Setting up disk layout for ZFS pools..."
+
+  local exclude_list=("${EXCLUDE_DISKS[@]}")
+  local available_disks=()
+  local tank_disks=("${TANK_DISKS[@]}")
+
+  # Get all available disks
+  while IFS= read -r disk; do
+    if [ -n "$disk" ]; then
+      local clean_disk=$(echo "$disk" | sed 's|/dev/||')
+      local is_excluded=false
+
+      # Check if disk is in exclude list
+      for excluded in "${exclude_list[@]}"; do
+        if [ "$clean_disk" = "$excluded" ]; then
+          is_excluded=true
+          break
+        fi
+      done
+
+      # Check if disk is safe to modify
+      if [ "$is_excluded" = false ] && is_disk_safe_to_modify "$disk"; then
+        available_disks+=("$disk")
+      fi
+    fi
+  done < <(lsblk -nd -o NAME | grep -E '^[a-z]+$' | sed 's|^|/dev/|')
+
+  if [ ${#available_disks[@]} -eq 0 ]; then
+    echo "Error: No available disks for ZFS pool layout"
+    return 1
+  fi
+
+  echo "Available disks: ${available_disks[*]}"
+
+  # Assign disks based on availability
+  if [ ${#tank_disks[@]} -gt 0 ]; then
+    echo "Using specified tank disks: ${tank_disks[*]}"
+    TANK_POOL_DISKS=("${tank_disks[@]}")
+  else
+    # Auto-assign disks
+    if [ ${#available_disks[@]} -ge 1 ]; then
+      BPOOL_RPOOL_DISK="${available_disks[0]}"
+      echo "Disk 1 (bpool/rpool): $BPOOL_RPOOL_DISK"
+    fi
+
+    if [ ${#available_disks[@]} -ge 2 ]; then
+      UPOOL_DISK="${available_disks[1]}"
+      echo "Disk 2 (upool): $UPOOL_DISK"
+    fi
+
+    if [ ${#available_disks[@]} -ge 3 ]; then
+      TANK_POOL_DISKS=("${available_disks[@]:2}")
+      echo "Tank pool disks (mirrored): ${TANK_POOL_DISKS[*]}"
+    fi
+  fi
+
+  return 0
+}
+
+# Main partitioning function
+partition_disks() {
+  echo "=== Starting disk partitioning ==="
+
+  # Initialize configuration arrays
+  EXCLUDE_DISKS=()  # Can be populated by user or config file
+  TANK_DISKS=()     # Can be populated by user or config file
+  CREATED_NEW_PARTITIONS=false
+
+  # Check if we need to create basic partitions (EFI, boot, root)
+  local need_efi=true
+  local need_boot=true
+  local need_root=true
+
+  # Check existing partitions
+  if [ ${#EFI_PARTITIONS[@]} -gt 0 ]; then
+    echo "EFI partition already exists: ${EFI_PARTITIONS[0]}"
+    EFI_PARTITION="${EFI_PARTITIONS[0]}"
+    need_efi=false
+  fi
+
+  if [ ${#BOOT_PARTITIONS[@]} -gt 0 ]; then
+    echo "Boot partition already exists: ${BOOT_PARTITIONS[0]}"
+    BOOT_PARTITION="${BOOT_PARTITIONS[0]}"
+    need_boot=false
+  fi
+
+  # For now, assume we need root if we need boot
+  need_root=$need_boot
+
+  # If we need basic partitions, create them on first available disk
+  if [ "$need_efi" = true ] || [ "$need_boot" = true ] || [ "$need_root" = true ]; then
+    echo "Creating basic partitions (EFI, boot, root)..."
+
+    local target_disk
+    target_disk=$(get_first_available_disk)
+    if [ $? -ne 0 ]; then
+      echo "Error: Cannot find available disk for partitioning"
+      return 1
+    fi
+
+    create_partitions "$target_disk"
+    if [ $? -ne 0 ]; then
+      echo "Error: Failed to create partitions"
+      return 1
+    fi
+  fi
+
+  # Setup ZFS pool layout for baremetal
+  if [ "$IS_BAREMETAL" = true ]; then
+    setup_tank_pool_layout
+  fi
+
+  # Display final partition layout
+  echo "=== Final partition layout ==="
+  echo "EFI partition:  $EFI_PARTITION"
+  echo "Boot partition: $BOOT_PARTITION"
+  echo "Root partition: $ROOT_PARTITION"
+
+  if [ "$IS_BAREMETAL" = true ]; then
+    echo "=== ZFS pool layout ==="
+    echo "bpool/rpool disk: ${BPOOL_RPOOL_DISK:-$BOOT_PARTITION}"
+    echo "upool disk: ${UPOOL_DISK:-none}"
+    echo "tank pool disks: ${TANK_POOL_DISKS[*]:-none}"
+
+    # Placeholder for ZFS pool and dataset creation
+    echo "=== ZFS pools and datasets (placeholder) ==="
+    echo "# TODO: Create bpool (boot pool)"
+    echo "# TODO: Create rpool (root pool)"
+    echo "# TODO: Create upool (user pool) if disk available"
+    echo "# TODO: Create tank pool (data pool) if disks available"
+    echo "# TODO: Create datasets for /, /home, /var, etc."
+  fi
+
+  echo "=== Partitioning complete ==="
+  return 0
+}
+
+# Function to format ext4 partitions (virtual machines)
+format_ext4_partitions() {
+  if [ "$IS_VIRTUAL" != true ]; then
+    echo "ext4 formatting only applicable for virtual machines"
+    return 0
+  fi
+
+  if [ -z "$BOOT_PARTITION" ] || [ -z "$ROOT_PARTITION" ]; then
+    echo "Error: BOOT or ROOT partition not defined"
+    return 1
+  fi
+
+  echo "Formatting BOOT partition as ext4: $BOOT_PARTITION"
+  mkfs.ext4 -L "BOOT" "$BOOT_PARTITION"
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to format boot partition"
+    return 1
+  fi
+
+  echo "Formatting ROOT partition as ext4: $ROOT_PARTITION"
+  mkfs.ext4 -L "ROOT" "$ROOT_PARTITION"
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to format root partition"
+    return 1
+  fi
+
+  echo "ext4 partitions formatted successfully"
+  return 0
+}
+
+# Function to setup ZFS pools and datasets (baremetal)
+setup_zfs_pools() {
+  if [ "$IS_BAREMETAL" != true ]; then
+    echo "ZFS setup only applicable for baremetal"
+    return 0
+  fi
+
+  echo "Setting up ZFS pools and datasets..."
+
+  # This is a placeholder for now
+  echo "=== ZFS setup (placeholder) ==="
+  echo "# TODO: Create bpool on $BOOT_PARTITION"
+  echo "# TODO: Create rpool on $ROOT_PARTITION"
+
+  if [ -n "$UPOOL_DISK" ]; then
+    echo "# TODO: Create upool on $UPOOL_DISK"
+  fi
+
+  if [ ${#TANK_POOL_DISKS[@]} -gt 0 ]; then
+    echo "# TODO: Create tank pool with disks: ${TANK_POOL_DISKS[*]}"
+  fi
+
+  echo "# TODO: Create datasets:"
+  echo "#   rpool/ROOT/ubuntu (root filesystem)"
+  echo "#   rpool/home (home directories)"
+  echo "#   rpool/var (variable data)"
+  echo "#   rpool/var/log (log files)"
+  echo "#   rpool/var/cache (cache data)"
+  echo "#   rpool/tmp (temporary files)"
+
+  return 0
+}
+
+# Main formatting function
+format_partitions() {
+  echo "=== Starting partition formatting ==="
+
+  # Format EFI partition if we created it
+  format_efi_partition
+  if [ $? -ne 0 ]; then
+    echo "Error: EFI partition formatting failed"
+    return 1
+  fi
+
+  # Format based on environment
+  if [ "$IS_VIRTUAL" = true ]; then
+    # Virtual machine: format as ext4
+    format_ext4_partitions
+    if [ $? -ne 0 ]; then
+      echo "Error: ext4 partition formatting failed"
+      return 1
+    fi
+  else
+    # Baremetal: setup ZFS
+    setup_zfs_pools
+    if [ $? -ne 0 ]; then
+      echo "Error: ZFS setup failed"
+      return 1
+    fi
+  fi
+
+  # Generate fstab
+  generate_fstab
+  if [ $? -ne 0 ]; then
+    echo "Error: fstab generation failed"
+    return 1
+  fi
+
+  echo "=== Partition formatting complete ==="
+  return 0
+}

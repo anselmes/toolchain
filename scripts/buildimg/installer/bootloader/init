@@ -1,0 +1,4 @@
+[ -n "$SCRIPTSDIR" ] && {
+  . "${SCRIPTSDIR}/installer/bootloader/grub"
+  . "${SCRIPTSDIR}/installer/bootloader/uboot"
+}

@@ -1,0 +1,215 @@
+# create_partitions() {
+#   local DEV="$1"
+
+#   make_label $DEV gpt
+
+#   make_efi_partition $DEV
+#   make_boot_partition $DEV
+#   make_root_partition $DEV
+
+#   sudo -E parted -s "$DEV" p
+# }
+
+# make_label() {
+#   local DEV="$1"
+#   local TABLE="$2"
+
+#   # check partition table
+#   if sudo parted -s "$DEV" print | grep -q "Partition Table: $TABLE"; then
+#     echo "Partition table $TABLE already exists on $DEV, skipping creation."
+#     return
+#   fi
+
+#   # create partition table
+#   sudo -E parted -s "$DEV" mklabel "$TABLE"
+# }
+
+# make_efi_partition() {
+#   local DEV="$1"
+#   local START=$(part_start $DEV)
+
+#   # check if EFI partition exists
+#   if sudo parted -s "$DEV" print | grep -q "EFI"; then
+#     echo "EFI partition already exists on $DEV, skipping creation."
+#     return
+#   fi
+
+#   # create EFI partition
+#   sudo -E parted -s "$DEV" mkpart EFI fat32 "$START" 513MiB
+
+#   # set the partition type to EFI
+#   local PART=$(last_part_num "$DEV")
+#   sudo -E parted -s "$DEV" set "$PART" esp on
+# }
+
+# make_boot_partition() {
+#   local DEV="$1"
+
+#   # check if boot partition exists
+#   if sudo parted -s "$DEV" print | grep -q "BOOT"; then
+#     echo "Boot partition already exists on $DEV, skipping creation."
+#     return
+#   fi
+
+#   # create boot partition
+#   sudo -E parted -s "$DEV" mkpart BOOT zfs "$(part_start $DEV)" 2GiB
+# }
+
+# make_root_partition() {
+#   local DEV="$1"
+
+#   # check if root partition exists
+#   if sudo parted -s "$DEV" print | grep -q "ROOT"; then
+#     echo "Root partition already exists on $DEV, skipping creation."
+#     return
+#   fi
+
+#   # create root partition
+#   sudo -E parted -s "$DEV" mkpart ROOT zfs "$(part_start $DEV)" 100%
+# }
+
+# last_part_num() {
+#   local DEV="$1"
+#   sudo -E parted -s "$DEV" print | awk '/^ / {part=$1} END {print part}'
+# }
+
+# part_start() {
+#   local DEV="$1"
+
+#   # Get the end of the last partition in sectors
+#   local last_end=$(sudo -E parted -s "$DEV" unit s print | awk '/^ / {end=$3} END {if (end) {gsub(/s/, "", end); print end} else print 0}')
+
+#   # If no partitions exist, start at 2048 sectors (1MiB)
+#   if [[ $last_end -eq 0 ]]; then
+#     echo "2048s"
+#   else
+#     # Calculate next aligned start (round up to next 2048-sector boundary)
+#     local next_start=$(( ((last_end + 2048) / 2048) * 2048 ))
+#     echo "${next_start}s"
+#   fi
+# }
+
+# Function to check for EFI partition (FAT32)
+check_efi_partition() {
+  echo "Checking for EFI partitions..."
+  local efi_partitions=()
+
+  # Find partitions with EFI/ESP type
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
+      efi_partitions+=("$line")
+    fi
+  done < <(lsblk -ln -o NAME,FSTYPE,PARTTYPENAME | grep -i "efi\|esp" | awk '{print "/dev/"$1}' || true)
+
+  # Also check for FAT32 partitions mounted at /boot/efi
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
+      local part=$(echo "$line" | awk '{print $1}')
+      if [[ ! " ${efi_partitions[*]} " =~ " ${part} " ]]; then
+        efi_partitions+=("$part")
+      fi
+    fi
+  done < <(mount | grep "/boot/efi" || true)
+
+  if [ ${#efi_partitions[@]} -gt 0 ]; then
+    echo "Found EFI partition(s): ${efi_partitions[*]}"
+    EFI_PARTITIONS=("${efi_partitions[@]}")
+    return 0
+  else
+    echo "No EFI partitions found"
+    EFI_PARTITIONS=()
+    return 1
+  fi
+}
+
+# Function to create partition table and partitions
+create_partitions() {
+  local disk="$1"
+
+  if [ -z "$disk" ]; then
+    echo "Error: No disk specified for partitioning"
+    return 1
+  fi
+
+  echo "Creating partitions on $disk..."
+
+  # Check if disk already has partitions
+  local partition_count=$(lsblk -ln -o NAME "$disk" | tail -n +2 | wc -l)
+  if [ "$partition_count" -gt 0 ]; then
+    echo "Warning: Disk $disk already has $partition_count partition(s)"
+    echo "Existing partitions will be destroyed. Continue? (y/N)"
+    read -r response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+      echo "Partitioning aborted"
+      return 1
+    fi
+  fi
+
+  # Create GPT partition table
+  echo "Creating GPT partition table on $disk"
+  parted -s "$disk" mklabel gpt
+
+  # Create EFI partition (512MiB)
+  echo "Creating EFI partition (512MiB)"
+  parted -s "$disk" mkpart EFI fat32 1MiB 513MiB
+  parted -s "$disk" set 1 esp on
+
+  # Create boot partition (2GiB)
+  if [ "$IS_BAREMETAL" = true ]; then
+    echo "Creating ZFS BOOT partition (2GiB)"
+    parted -s "$disk" mkpart bpool zfs 513MiB 2561MiB
+  else
+    echo "Creating ext4 BOOT partition (2GiB)"
+    parted -s "$disk" mkpart BOOT ext4 513MiB 2561MiB
+  fi
+
+  # Create root partition (remaining space)
+  if [ "$IS_BAREMETAL" = true ]; then
+    echo "Creating ZFS ROOT partition (remaining space)"
+    parted -s "$disk" mkpart rpool zfs 2561MiB 100%
+  else
+    echo "Creating ext4 ROOT partition (remaining space)"
+    parted -s "$disk" mkpart ROOT ext4 2561MiB 100%
+  fi
+
+  # Inform kernel of partition changes
+  partprobe "$disk"
+  sleep 2
+
+  # Set partition variables
+  EFI_PARTITION="${disk}1"
+  BOOT_PARTITION="${disk}2"
+  ROOT_PARTITION="${disk}3"
+  CREATED_NEW_PARTITIONS=true
+
+  echo "Partitions created:"
+  echo "  EFI:  $EFI_PARTITION (512MiB)"
+  echo "  Boot: $BOOT_PARTITION (2GiB)"
+  echo "  Root: $ROOT_PARTITION (remaining)"
+
+  return 0
+}
+
+# Function to format EFI partition
+format_efi_partition() {
+  if [ -z "$EFI_PARTITION" ]; then
+    echo "No EFI partition defined"
+    return 1
+  fi
+
+  # Check if we created this partition (don't format existing ones)
+  if [ "$CREATED_NEW_PARTITIONS" = true ]; then
+    echo "Formatting EFI partition: $EFI_PARTITION"
+    mkfs.fat -F32 -n "EFI" "$EFI_PARTITION"
+    if [ $? -eq 0 ]; then
+      echo "EFI partition formatted successfully"
+      return 0
+    else
+      echo "Error: Failed to format EFI partition"
+      return 1
+    fi
+  else
+    echo "Using existing EFI partition: $EFI_PARTITION (not formatting)"
+    return 0
+  fi
+}
