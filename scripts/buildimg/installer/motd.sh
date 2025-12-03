@@ -16,7 +16,7 @@ setup_motd() {
 
   # Validate banner type
   case "${BANNER_TYPE}" in
-    ubuntu|vyos|maas|kcm)
+    ubuntu|vyos|maas|kcm|socfpga)
       echo "Setting up MOTD with '${BANNER_TYPE}' banner..."
       ;;
     *)
@@ -113,6 +113,26 @@ BANNER
 
 printf "\n"
 printf "KCM - Kubernetes Cluster Manager\n"
+printf "================================================\n\n"
+EOF
+      ;;
+
+    socfpga)
+      cat > "${MOTD_DIR}/00-header" << 'EOF'
+#!/bin/sh
+
+printf "\n"
+cat << 'BANNER'
+███████╗ ██████╗  ██████╗███████╗██████╗  ██████╗  █████╗
+██╔════╝██╔═══██╗██╔════╝██╔════╝██╔══██╗██╔════╝ ██╔══██╗
+███████╗██║   ██║██║     █████╗  ██████╔╝██║  ███╗███████║
+╚════██║██║   ██║██║     ██╔══╝  ██╔═══╝ ██║   ██║██╔══██║
+███████║╚██████╔╝╚██████╗██║     ██║     ╚██████╔╝██║  ██║
+╚══════╝ ╚═════╝  ╚═════╝╚═╝     ╚═╝      ╚═════╝ ╚═╝  ╚═╝
+BANNER
+
+printf "\n"
+printf "SoCFPGA HPS - Hard Processor System\n"
 printf "================================================\n\n"
 EOF
       ;;
@@ -308,6 +328,37 @@ printf "Current time:   $(date)\n"
 printf "Documentation:  https://docs.k0sproject.io/\n\n"
 EOF
       ;;
+
+    socfpga)
+      cat > "${MOTD_DIR}/99-footer" << 'EOF'
+#!/bin/sh
+
+cat << 'FOOTER'
+===============================================================================
+HPS Operations:
+  systemctl status             - Check system services
+  ip addr show                 - Display network interfaces
+  lscpu                        - Show ARM CPU information
+  free -h                      - Display memory usage
+
+HPS-FPGA Bridge:
+  devmem <addr> [width] [value] - Read/write HPS-FPGA bridge
+  cat /proc/device-tree/sopc@0/bridge@* - Show bridge configuration
+  ls /dev/uio*                 - List UIO devices for FPGA access
+  /sys/class/fpga_manager/     - FPGA manager interface
+
+System Monitoring:
+  journalctl -f                - Follow system logs
+  htop                         - Process and resource monitor
+  iostat                       - I/O statistics
+===============================================================================
+
+FOOTER
+
+printf "Current time:   $(date)\n"
+printf "Documentation:  https://docs.intel.com/fpga/hps/\n\n"
+EOF
+      ;;
   esac
 
   # Make all scripts executable
@@ -358,6 +409,18 @@ KCM \n \l
 ================================================================================
 Kubernetes Cluster Manager
 Use 'kubectl' commands to manage the cluster.
+================================================================================
+
+EOF
+      ;;
+
+    socfpga)
+      cat > /etc/issue << 'EOF'
+SoCFPGA HPS \n \l
+
+================================================================================
+Intel SoC FPGA Hard Processor System
+ARM-based Processing Subsystem
 ================================================================================
 
 EOF
@@ -417,9 +480,22 @@ Use 'kubectl' commands to manage the cluster.
 ================================================================================
 EOF
       ;;
+
+    socfpga)
+      cat > /etc/issue.net << 'EOF'
+================================================================================
+SoCFPGA HPS
+
+Intel SoC FPGA Hard Processor System.
+Unauthorized access is prohibited.
+
+ARM-based Processing Subsystem for SoC FPGA applications.
+================================================================================
+EOF
+      ;;
   esac
 
-  echo "✅ MOTD configuration completed successfully with${'$BANNER_TY}PE' banner!"
+  echo "✅ MOTD configuration completed successfully with ${BANNER_TYPE} banner!"
   echo "📄 The following files have been configured:"
   echo "   - ${MOTD_DIR}/00-header (Custom ${BANNER_TYPE} banner)"
   echo "   - ${MOTD_DIR}/01-sysinfo (System information)"
@@ -434,7 +510,7 @@ EOF
   echo "🔄 To test the MOTD, run: sudo run-parts /etc/update-motd.d/"
   echo ""
   echo "💡 Usage: $0 [banner_type]"
-  echo "   Available banner types: ubuntu (default), vyos, maas, kcm"
+  echo "   Available banner types: ubuntu (default), vyos, maas, kcm, socfpga"
   echo ""
 }
 
@@ -449,6 +525,7 @@ show_usage() {
   echo "  vyos      VyOS Gateway - Network Operating System"
   echo "  maas      MAAS - Metal as a Service"
   echo "  kcm       KCM - Kubernetes Cluster Manager"
+  echo "  socfpga   SoCFPGA HPS - Hard Processor System"
   echo ""
   echo "Examples:"
   echo "  $0                # Use default ubuntu banner"
@@ -456,6 +533,7 @@ show_usage() {
   echo "  $0 vyos           # VyOS gateway"
   echo "  $0 maas           # MAAS appliance"
   echo "  $0 kcm            # Kubernetes cluster manager"
+  echo "  $0 socfpga        # SoCFPGA HPS system"
   echo ""
 }
 
