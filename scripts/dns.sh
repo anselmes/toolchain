@@ -353,6 +353,7 @@ generate_cname_record() {
   printf "%-50s\t1\tIN\tCNAME\t%s ; cf_tags=cf-proxied:%s\n" "$hostname.$DOMAIN." "$target." "$PROXY"
 }
 
+# FIXME: add option to completely bypass msr lb (ex. after migrating to 4)
 generate_lb_record() {
   local service="$1"
   local ip="$2"
