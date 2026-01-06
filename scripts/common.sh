@@ -17,7 +17,6 @@ DEFAULT_SSH_CONFIG="config/ssh/config"
 
 # MARK: - Validation Functions
 
-# Check if a command exists
 check_command() {
   local cmd=$1
   local install_msg=${2:-""}
@@ -32,7 +31,6 @@ check_command() {
   return 0
 }
 
-# Check if a file exists
 check_file() {
   local file=$1
   local description=${2:-"File"}
@@ -44,7 +42,6 @@ check_file() {
   return 0
 }
 
-# Check if a directory exists
 check_directory() {
   local dir=$1
   local description=${2:-"Directory"}
@@ -56,17 +53,14 @@ check_directory() {
   return 0
 }
 
-# Validate required tools for YAML processing
 validate_yaml_tools() {
   check_command "yq" "Install with: brew install yq"
 }
 
-# Validate required tools for Terraform
 validate_terraform_tools() {
   check_command "terraform" "Install from: https://www.terraform.io/downloads.html"
 }
 
-# Validate Cloudflare credentials and tools
 validate_cloudflare_tools() {
   if [[ -z "$CF_API_TOKEN" ]]; then
     echo "Error: CF_API_TOKEN environment variable is required for Cloudflare operations"
@@ -77,7 +71,6 @@ validate_cloudflare_tools() {
   check_command "curl" "Install curl"
 }
 
-# Validate required tools for Docker operations
 validate_docker_tools() {
   check_command "docker" "Install from: https://docs.docker.com/get-docker/"
 
@@ -91,7 +84,6 @@ validate_docker_tools() {
 
 # MARK: - YAML Processing Functions
 
-# Get all available hosts for a specific role prefix from YAML
 get_available_hosts() {
   local role_prefix=$1
   local source_file=$2
@@ -100,7 +92,6 @@ get_available_hosts() {
   yq '.spec.kubernetes.infra.hosts[].role' "$source_file" -r | grep "^${CLUSTER_NAME}-${role_prefix}-" || true
 }
 
-# Extract host information (IP, FQDN, or Cloudflare domain) from YAML
 extract_host_info() {
   local role_name=$1
   local source_file=$2
@@ -127,7 +118,6 @@ extract_host_info() {
   fi
 }
 
-# Get SSH key path for a role from YAML
 get_ssh_key_path() {
   local role_name=$1
   local source_file=$2
@@ -139,7 +129,6 @@ get_ssh_key_path() {
   " "$source_file"
 }
 
-# Get SSH user for a role from YAML
 get_ssh_user() {
   local role_name=$1
   local source_file=$2
@@ -151,7 +140,6 @@ get_ssh_user() {
   " "$source_file"
 }
 
-# Get SSH port for a role from YAML
 get_ssh_port() {
   local role_name=$1
   local source_file=$2
@@ -165,13 +153,11 @@ get_ssh_port() {
 
 # MARK: - Directory and File Management
 
-# Create directory if it doesn't exist
 ensure_directory() {
   local dir=$1
   mkdir -p "$dir"
 }
 
-# Get the output directory for a file path
 get_output_dir() {
   local file_path=$1
   dirname "$file_path"
@@ -179,7 +165,6 @@ get_output_dir() {
 
 # MARK: - Group Variables Detection
 
-# Detect which host variable type is used in a group_vars file
 detect_host_variable() {
   local group_name=$1
   local group_vars_dir=${2:-"$DEFAULT_OUTPUT_DIR"}
@@ -200,7 +185,6 @@ detect_host_variable() {
 
 # MARK: - Argument Parsing Helpers
 
-# Parse source file argument
 parse_source_arg() {
   local next_arg=${1:-}
   local default_file=${2:-$DEFAULT_SOURCE_FILE}
@@ -212,7 +196,6 @@ parse_source_arg() {
   fi
 }
 
-# Parse output argument
 parse_output_arg() {
   local next_arg=${1:-}
   local default_output=${2:-}
@@ -226,14 +209,12 @@ parse_output_arg() {
 
 # MARK: - Output Formatting
 
-# Print a section header
 print_section() {
   local title=$1
   echo ""
   echo "=== $title ==="
 }
 
-# Print a result summary
 print_result() {
   local description=$1
   shift
@@ -246,7 +227,6 @@ print_result() {
   done
 }
 
-# Print host counts summary
 print_host_counts() {
   local cp_count=$1
   local md_count=$2
@@ -263,7 +243,6 @@ print_host_counts() {
 
 # MARK: - Terraform Helpers
 
-# Change to terraform directory and execute command
 terraform_exec() {
   local terraform_dir=$1
   local cmd=$2
@@ -271,7 +250,6 @@ terraform_exec() {
   (cd "$terraform_dir" && eval "$cmd")
 }
 
-# Get terraform output value safely
 get_terraform_output() {
   local terraform_dir=$1
   local output_name=$2
@@ -281,7 +259,6 @@ get_terraform_output() {
 
 # MARK: - DNS Resolution
 
-# Resolve hostname to IP address
 resolve_to_ip() {
   local hostname=$1
 
@@ -296,7 +273,6 @@ resolve_to_ip() {
 
 # MARK: - Common Usage Patterns
 
-# Standard help option handling
 handle_help_option() {
   local option=$1
   local usage_func=$2
@@ -309,7 +285,6 @@ handle_help_option() {
   esac
 }
 
-# Standard unknown option handling
 handle_unknown_option() {
   local option=$1
   local usage_func=$2
