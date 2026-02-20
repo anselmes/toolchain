@@ -1,0 +1,282 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2025 Schubert Anselme <schubert@anselm.es>
+
+#
+# VM Creation Script for virt-install with macOS vmnet support
+# Creates virtual machines with customizable CPU, memory, disk, and network configurations
+#
+
+set -eo pipefail
+
+#==============================================================================
+# Default Configuration
+#==============================================================================
+
+VM_NAME="vm0"
+
+CPU_COUNT=2
+MEM_SIZE=8192
+
+# Storage
+DISK_SIZE=64
+ADDITIONAL_DISKS=()
+
+# Network flags
+ADD_MANAGEMENT=false
+ADD_PUBLIC=false
+
+# Cloud-init options
+METADATA_FILE=""
+USERDATA_FILE=""
+NETCONFIG_FILE=""
+
+# Output options
+PRINT_XML=false
+OUTPUT_FILE=""
+
+#==============================================================================
+# Helper Functions
+#==============================================================================
+
+# Generate random MAC address with 54:54:00 prefix (locally administered)
+generate_mac() {
+  printf "54:54:00:%02x:%02x:%02x" \
+    $((RANDOM % 256)) \
+    $((RANDOM % 256)) \
+    $((RANDOM % 256))
+}
+
+#==============================================================================
+# MAC Address Generation
+#==============================================================================
+
+MAC_SHARED=$(generate_mac)
+MAC_MANAGEMENT=$(generate_mac)
+MAC_PUBLIC=$(generate_mac)
+
+#==============================================================================
+# Command Line Argument Parsing
+#==============================================================================
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -n|--name)
+      VM_NAME="$2"
+      shift 2
+      ;;
+    -c|--cpu-count)
+      CPU_COUNT="$2"
+      shift 2
+      ;;
+    -m|--mem-size)
+      MEM_SIZE="$2"
+      shift 2
+      ;;
+    -d|--disk-size)
+      DISK_SIZE="$2"
+      shift 2
+      ;;
+    --add-disk)
+      ADDITIONAL_DISKS+=("$2")
+      shift 2
+      ;;
+    --management)
+      ADD_MANAGEMENT=true
+      shift
+      ;;
+    --public)
+      ADD_PUBLIC=true
+      shift
+      ;;
+    --meta-data)
+      METADATA_FILE="$2"
+      shift 2
+      ;;
+    --user-data)
+      USERDATA_FILE="$2"
+      shift 2
+      ;;
+    --net-config)
+      NETCONFIG_FILE="$2"
+      shift 2
+      ;;
+    --print)
+      PRINT_XML=true
+      # Check if next argument is a file path (not starting with --)
+      if [[ $# -gt 1 && "$2" != --* ]]; then
+        OUTPUT_FILE="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    -h|--help)
+      cat << EOF
+VM Creation Script
+
+USAGE:
+  $0 [OPTIONS]
+
+HARDWARE OPTIONS:
+  -n, --name                VM name (default: vm0)
+  -c, --cpu-count           Number of CPUs (default: 2)
+  -m, --mem-size            Memory size in MB (default: 8192)
+
+STORAGE OPTIONS:
+  -d, --disk-size           Main disk size in GB (default: 64)
+  --add-disk        SIZE    Add additional disk of SIZE GB (repeatable)
+
+NETWORK OPTIONS:
+  --management              Add vmnet-host network (management/isolated)
+  --public                  Add vmnet-bridge network (public/bridged)
+
+  Note: vmnet-shared is always included as the default network
+
+CLOUD-INIT OPTIONS:
+  --meta-data       FILE    Cloud-init metadata file
+  --user-data       FILE    Cloud-init userdata file
+  --net-config      FILE    Cloud-init network-config file
+
+OUTPUT OPTIONS:
+  --print [FILE]            Print XML configuration only (don't create VM)
+                            Optionally save to FILE instead of stdout
+
+OTHER OPTIONS:
+  -h, --help                Show this help message
+
+EXAMPLES:
+  $0                                                # Basic VM with defaults
+  $0 -n webserver -c 4 -m 16384                     # Custom name and resources
+  $0 --add-disk 128 --add-disk 256                  # VM with additional disks
+  $0 --management --public                          # VM with all network types
+  $0 --meta-data meta.yaml --user-data user.yaml    # VM with cloud-init
+
+EOF
+      exit 0
+      ;;
+    *)
+      echo "❌ Error: Unknown option '$1'"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+  esac
+done
+
+#==============================================================================
+# Build VM Configuration
+#==============================================================================
+
+echo "🚀 Building VM configuration..."
+echo "   Name: ${VM_NAME}"
+echo "   CPUs: ${CPU_COUNT}"
+echo "   Memory: ${MEM_SIZE}MB"
+echo "   Main Disk: ${DISK_SIZE}GB"
+
+# Build additional disks configuration
+ADDITIONAL_DISK_CONFIG=""
+if [[ ${#ADDITIONAL_DISKS[@]} -gt 0 ]]; then
+  echo "   Additional Disks:"
+  for disk_size in "${ADDITIONAL_DISKS[@]}"; do
+    echo "     - ${disk_size}GB"
+    ADDITIONAL_DISK_CONFIG="${ADDITIONAL_DISK_CONFIG} --disk size=${disk_size}"
+  done
+fi
+
+# Build network configuration
+echo "   Networks:"
+echo "     - vmnet-shared (${MAC_SHARED})"
+
+NETWORK_CONFIG="-netdev vmnet-shared,id=net0 -device virtio-net-device,netdev=net0,mac=${MAC_SHARED}"
+
+if [[ "${ADD_MANAGEMENT}" == "true" ]]; then
+  echo "     - vmnet-host/management (${MAC_MANAGEMENT})"
+  NETWORK_CONFIG="${NETWORK_CONFIG} -netdev vmnet-host,id=net1 -device virtio-net-device,netdev=net1,mac=${MAC_MANAGEMENT}"
+fi
+
+if [[ "${ADD_PUBLIC}" == "true" ]]; then
+  echo "     - vmnet-bridge/public (${MAC_PUBLIC})"
+  NETWORK_CONFIG="${NETWORK_CONFIG} -netdev vmnet-bridge,id=net2 -device virtio-net-device,netdev=net2,mac=${MAC_PUBLIC}"
+fi
+
+echo ""
+
+# Build cloud-init configuration
+CLOUD_INIT_CONFIG=""
+if [[ -n "${METADATA_FILE}" || -n "${USERDATA_FILE}" || -n "${NETCONFIG_FILE}" ]]; then
+  echo "☁️  Cloud-init configuration:"
+  CLOUD_INIT_PARTS=()
+
+  if [[ -n "${METADATA_FILE}" ]]; then
+    echo "   Metadata: ${METADATA_FILE}"
+    CLOUD_INIT_PARTS+=("meta-data=${METADATA_FILE}")
+  fi
+
+  if [[ -n "${USERDATA_FILE}" ]]; then
+    echo "   Userdata: ${USERDATA_FILE}"
+    CLOUD_INIT_PARTS+=("user-data=${USERDATA_FILE}")
+  fi
+
+  if [[ -n "${NETCONFIG_FILE}" ]]; then
+    echo "   Network Config: ${NETCONFIG_FILE}"
+    CLOUD_INIT_PARTS+=("network-config=${NETCONFIG_FILE}")
+  fi
+
+  # Join array elements with comma
+  CLOUD_INIT_CONFIG="--cloud-init $(IFS=,; echo "${CLOUD_INIT_PARTS[*]}")"
+  echo ""
+fi
+
+echo ""
+
+#==============================================================================
+# Create Virtual Machine
+#==============================================================================
+
+echo "📦 Generating VM configuration XML..."
+
+# Build virt-install command
+VIRT_INSTALL_CMD="virt-install \\
+  --virt-type=\"${VIRT_TYPE:-hvf}\" \\
+  --name=\"${VM_NAME}\" \\
+  --os-type=\"${OS_TYPE:-linux}\" \\
+  --os-variant=\"${OS_VARIANT:-ubuntu24.04}\" \\
+  --ram=\"${MEM_SIZE}\" \\
+  --vcpus=\"${CPU_COUNT}\" \\
+  --disk \"size=${DISK_SIZE}${ADDITIONAL_DISK_CONFIG}\" \\
+  --graphics vnc \\
+  --network none \\
+  --qemu-commandline=\"-M highmem=on ${NETWORK_CONFIG}\""
+
+# Add cloud-init configuration if provided
+if [[ -n "${CLOUD_INIT_CONFIG}" ]]; then
+  VIRT_INSTALL_CMD="${VIRT_INSTALL_CMD} ${CLOUD_INIT_CONFIG}"
+fi
+
+# Add --print-xml if --print flag was provided
+if [[ "${PRINT_XML}" == "true" ]]; then
+  VIRT_INSTALL_CMD="${VIRT_INSTALL_CMD} --print-xml"
+fi
+
+# Execute the command
+if [[ "${PRINT_XML}" == "true" && -n "${OUTPUT_FILE}" ]]; then
+  echo "💾 Saving XML configuration to: ${OUTPUT_FILE}"
+  eval "${VIRT_INSTALL_CMD}" > "${OUTPUT_FILE}"
+else
+  eval "${VIRT_INSTALL_CMD}"
+fi
+
+echo ""
+if [[ "${PRINT_XML}" == "true" ]]; then
+  if [[ -n "${OUTPUT_FILE}" ]]; then
+    echo "✅ VM configuration XML saved to: ${OUTPUT_FILE}"
+    echo "💡 Use 'virsh define --file ${OUTPUT_FILE}' to create the VM"
+  else
+    echo "✅ VM configuration XML generated successfully!"
+    echo "💡 Use 'virsh define --file <xml_file>' to create the VM from the generated XML"
+  fi
+else
+  echo "✅ VM creation completed successfully!"
+  echo "💡 Use 'virsh start ${VM_NAME}' to start the VM"
+fi
