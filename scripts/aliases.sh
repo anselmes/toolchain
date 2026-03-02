@@ -15,11 +15,13 @@ alias grep="grep --color=auto"
 alias fgrep="fgrep --color=auto"
 alias egrep="egrep --color=auto"
 
-alias vbmc="sudo -E vbmc"
-alias virsh="sudo -E virsh"
-alias virt-install="sudo -E virt-install"
-alias virt-manager="sudo -E virt-manager"
+# alias vbmc="sudo -E vbmc"
+# alias virsh="sudo -E virsh"
+# alias virt-install="sudo -E virt-install"
+# alias virt-manager="sudo -E virt-manager"
 
 alias h="helm"
 alias k="kubectl"
 alias kb="kustomize build --enabled-helm"
+
+alias vault="$(command -v bao)"

@@ -24,7 +24,7 @@ export RUSTUP_HOME="/usr/local/rust/rustup"
 export PATH="${LOCAL_BIN}:${KREW_ROOT}/bin:${CARGO_HOME}/bin:${GOPATH}/bin:${TOOLS}${PATH:+:${PATH}}"
 
 # SSH Agent
-if ! ssh-add -l >>/dev/null 2>&1; then
-  eval "$(ssh-agent -s)" >/dev/null
-  ssh-add -k >/dev/null 2>&1
-fi
+# if ! ssh-add -l >>/dev/null 2>&1; then
+#   eval "$(ssh-agent -s)" >/dev/null
+#   ssh-add -k >/dev/null 2>&1
+# fi

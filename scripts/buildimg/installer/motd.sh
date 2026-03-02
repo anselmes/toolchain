@@ -419,7 +419,7 @@ EOF
       ;;
   esac
 
-  echo "✅ MOTD configuration completed successfully with${'$BANNER_TY}PE' banner!"
+  echo "✅ MOTD configuration completed successfully with ${BANNER_TYPE} banner!"
   echo "📄 The following files have been configured:"
   echo "   - ${MOTD_DIR}/00-header (Custom ${BANNER_TYPE} banner)"
   echo "   - ${MOTD_DIR}/01-sysinfo (System information)"
