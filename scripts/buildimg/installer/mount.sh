@@ -101,7 +101,7 @@ show_usage() {
 }
 
 # If script is run directly (not sourced), parse arguments and call appropriate function
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [ "$0" != "${0#*/}" ]; then
   case "$1" in
     --cleanup)
       umount_chroot "$2"

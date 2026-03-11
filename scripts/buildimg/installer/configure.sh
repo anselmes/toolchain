@@ -2,7 +2,7 @@
 
 configure_system() {
   local locale="${1:-C.UTF-8}"
-  local timezone="${2:-America/Toronto}"
+  local timezone="${2:-UTC}"
 
   set -eux
 
