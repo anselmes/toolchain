@@ -1,0 +1,116 @@
+# Main partitioning function
+partition_disks() {
+  echo "=== Starting disk partitioning ==="
+
+  # Initialize configuration arrays
+  EXCLUDE_DISKS=()  # Can be populated by user or config file
+  TANK_DISKS=()     # Can be populated by user or config file
+  CREATED_NEW_PARTITIONS=false
+
+  # Check if we need to create basic partitions (EFI, boot, root)
+  local need_efi=true
+  local need_boot=true
+  local need_root=true
+
+  # Check existing partitions
+  if [ ${#EFI_PARTITIONS[@]} -gt 0 ]; then
+    echo "EFI partition already exists: ${EFI_PARTITIONS[0]}"
+    EFI_PARTITION="${EFI_PARTITIONS[0]}"
+    need_efi=false
+  fi
+
+  if [ ${#BOOT_PARTITIONS[@]} -gt 0 ]; then
+    echo "Boot partition already exists: ${BOOT_PARTITIONS[0]}"
+    BOOT_PARTITION="${BOOT_PARTITIONS[0]}"
+    need_boot=false
+  fi
+
+  # For now, assume we need root if we need boot
+  need_root=$need_boot
+
+  # If we need basic partitions, create them on first available disk
+  if [ "$need_efi" = true ] || [ "$need_boot" = true ] || [ "$need_root" = true ]; then
+    echo "Creating basic partitions (EFI, boot, root)..."
+
+    local target_disk
+    target_disk=$(get_first_available_disk)
+    if [ $? -ne 0 ]; then
+      echo "Error: Cannot find available disk for partitioning"
+      return 1
+    fi
+
+    create_partitions "$target_disk"
+    if [ $? -ne 0 ]; then
+      echo "Error: Failed to create partitions"
+      return 1
+    fi
+  fi
+
+  # Display final partition layout
+  echo "=== Final partition layout ==="
+  echo "EFI partition:  $EFI_PARTITION"
+  echo "Boot partition: $BOOT_PARTITION"
+  echo "Root partition: $ROOT_PARTITION"
+
+  echo "=== Partitioning complete ==="
+  return 0
+}
+
+# Function to format ext4 partitions
+format_ext4_partitions() {
+  if [ "$IS_VIRTUAL" != true ]; then
+    echo "ext4 formatting only applicable for virtual machines"
+    return 0
+  fi
+
+  if [ -z "$BOOT_PARTITION" ] || [ -z "$ROOT_PARTITION" ]; then
+    echo "Error: BOOT or ROOT partition not defined"
+    return 1
+  fi
+
+  echo "Formatting BOOT partition as ext4: $BOOT_PARTITION"
+  mkfs.ext4 -L "BOOT" "$BOOT_PARTITION"
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to format boot partition"
+    return 1
+  fi
+
+  echo "Formatting ROOT partition as ext4: $ROOT_PARTITION"
+  mkfs.ext4 -L "ROOT" "$ROOT_PARTITION"
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to format root partition"
+    return 1
+  fi
+
+  echo "ext4 partitions formatted successfully"
+  return 0
+}
+
+# Main formatting function
+format_partitions() {
+  echo "=== Starting partition formatting ==="
+
+  # Format EFI partition if we created it
+  format_efi_partition
+  if [ $? -ne 0 ]; then
+    echo "Error: EFI partition formatting failed"
+    return 1
+  fi
+
+  # Format based on environment
+  format_ext4_partitions
+  if [ $? -ne 0 ]; then
+    echo "Error: ext4 partition formatting failed"
+    return 1
+  fi
+
+  # Generate fstab
+  generate_fstab
+  if [ $? -ne 0 ]; then
+    echo "Error: fstab generation failed"
+    return 1
+  fi
+
+  echo "=== Partition formatting complete ==="
+  return 0
+}

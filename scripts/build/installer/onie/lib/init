@@ -1,0 +1,5 @@
+[ -n "$SCRIPTSDIR" ] && {
+  . "${SCRIPTSDIR}/installer/lib/utility"
+  . "${SCRIPTSDIR}/installer/lib/check-onie"
+  . "${SCRIPTSDIR}/installer/lib/platform"
+}

@@ -1,0 +1,122 @@
+[ -n "$SCRIPTSDIR" ] && {
+  . "${SCRIPTSDIR}/installer/storage/mbr"
+  . "${SCRIPTSDIR}/installer/storage/gpt"
+  . "${SCRIPTSDIR}/installer/storage/blk"
+  . "${SCRIPTSDIR}/installer/storage/mtd"
+}
+
+# Function to check if disk contains partitions
+check_disk_partitions() {
+  local disk="$1"
+  local partition_count=0
+
+  if [ -b "$disk" ]; then
+    # Use lsblk to count partitions
+    partition_count=$(lsblk -ln -o NAME "$disk" | tail -n +2 | wc -l)
+    echo "Disk $disk has $partition_count partition(s)"
+    return $partition_count
+  else
+    echo "Error: $disk is not a valid block device"
+    return 1
+  fi
+}
+
+# Function to check for BOOT partition
+check_boot_partition() {
+  echo "Checking for BOOT partitions..."
+  local boot_partitions=()
+
+  # Check for /boot mount point
+  local boot_device=$(findmnt -n -o SOURCE /boot 2>/dev/null || true)
+  if [ -n "$boot_device" ]; then
+    boot_partitions+=("$boot_device")
+    local fstype=$(findmnt -n -o FSTYPE /boot 2>/dev/null || "unknown")
+    echo "Found mounted /boot partition: $boot_device (filesystem: $fstype)"
+  fi
+
+  # Look for partitions labeled as boot
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
+      local part="/dev/$line"
+      if [[ ! " ${boot_partitions[*]} " =~ " ${part} " ]]; then
+        boot_partitions+=("$part")
+      fi
+    fi
+  done < <(lsblk -ln -o NAME,PARTTYPENAME | grep -i "boot" | awk '{print $1}' || true)
+
+  if [ ${#boot_partitions[@]} -gt 0 ]; then
+    echo "Found BOOT partition(s): ${boot_partitions[*]}"
+    BOOT_PARTITIONS=("${boot_partitions[@]}")
+    return 0
+  else
+    echo "No BOOT partitions found"
+    BOOT_PARTITIONS=()
+    return 1
+  fi
+}
+
+# Main disk checking function
+check_parts() {
+  echo "=== Starting disk and partition checks ==="
+
+  # Initialize arrays
+  EFI_PARTITIONS=()
+  BOOT_PARTITIONS=()
+
+  # Check for EFI partition
+  check_efi_partition
+
+  # Check for BOOT partition
+  check_boot_partition
+
+  # List available disks and check each one
+  echo "=== Available disks ==="
+  while IFS= read -r disk; do
+    if [ -n "$disk" ]; then
+      echo "Checking disk: $disk"
+      check_disk_partitions "$disk"
+      echo "---"
+    fi
+  done < <(lsblk -nd -o NAME | grep -E '^[a-z]+$' | sed 's|^|/dev/|')
+
+  echo "=== Disk checks complete ==="
+}
+
+# Function to get first available disk
+get_first_available_disk() {
+  local exclude_list=("${EXCLUDE_DISKS[@]}")
+  local available_disks=()
+
+  echo "Looking for first available disk..."
+
+  # Get all disks and filter out excluded ones
+  while IFS= read -r disk; do
+    if [ -n "$disk" ]; then
+      local clean_disk=$(echo "$disk" | sed 's|/dev/||')
+      local is_excluded=false
+
+      # Check if disk is in exclude list
+      for excluded in "${exclude_list[@]}"; do
+        if [ "$clean_disk" = "$excluded" ]; then
+          echo "Disk $disk excluded by exclude list"
+          is_excluded=true
+          break
+        fi
+      done
+
+      # Check if disk is safe to modify
+      if [ "$is_excluded" = false ]; then
+        available_disks+=("$disk")
+      fi
+    fi
+  done < <(lsblk -nd -o NAME | grep -E '^[a-z]+$' | sed 's|^|/dev/|')
+
+  if [ ${#available_disks[@]} -gt 0 ]; then
+    echo "First available disk: ${available_disks[0]}"
+    echo "${available_disks[0]}"
+    return 0
+  else
+    echo "Error: No available disks found"
+    return 1
+  fi
+}

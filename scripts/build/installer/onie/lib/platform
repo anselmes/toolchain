@@ -1,0 +1,67 @@
+create_users() {
+  local OS="$1"
+  local groups="adm,dialout,cdrom,floppy,audio,dip,video,plugdev,netdev"
+
+  groupadd admin
+
+  # create admin user and set password to changeme (for now)
+  useradd -m -s /bin/bash -g admin -G "${groups}" admin
+  echo "admin:changeme" | chpasswd
+  cp -a /etc/skel/. /home/admin
+
+  # update permissions
+  usermod -aG docker admin
+  usermod -aG sudo admin
+}
+
+# Function to generate fstab entries
+generate_fstab() {
+  local fstab_file="/tmp/fstab.new"
+
+  echo "Generating fstab entries..."
+
+  # Create fstab header
+  cat > "$fstab_file" << 'EOF'
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+
+EOF
+
+  # Add ext4 partitions
+  if [ -n "$ROOT_PARTITION" ]; then
+    echo "Adding ROOT partition to fstab"
+    echo "PARTLABEL=ROOT          /               ext4    defaults        0       1" >> "$fstab_file"
+  fi
+
+  if [ -n "$BOOT_PARTITION" ]; then
+    echo "Adding BOOT partition to fstab"
+    echo "PARTLABEL=BOOT          /boot           ext4    defaults        0       2" >> "$fstab_file"
+  fi
+
+  # Add EFI partition entry
+  if [ -n "$EFI_PARTITION" ]; then
+    echo "Adding EFI partition to fstab"
+    echo "PARTLABEL=EFI           /boot/efi       vfat    umask=0077      0       1" >> "$fstab_file"
+  fi
+
+  # Add common entries
+  echo "" >> "$fstab_file"
+  # echo "# Temporary filesystems" >> "$fstab_file"
+  # echo "tmpfs                   /tmp            tmpfs   defaults,noatime,mode=1777 0 0" >> "$fstab_file"
+  # echo "tmpfs                   /dev/shm        tmpfs   defaults        0       0" >> "$fstab_file"
+
+  echo "fstab generated at: $fstab_file"
+  echo "=== fstab contents ==="
+  cat "$fstab_file"
+  echo "====================="
+
+  # Store fstab location for later use
+  FSTAB_FILE="$fstab_file"
+
+  return 0
+}
