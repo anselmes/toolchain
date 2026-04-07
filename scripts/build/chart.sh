@@ -23,6 +23,10 @@ SPECIFIC_UPSTREAM=()
 CLUSTERS=()
 
 SERVICES=(
+  # coder
+  # gatekeeper
+  # gitea
+  # lgtm
   ca
   ccm
   cni
@@ -45,6 +49,10 @@ SERVICES=(
 )
 
 TEMPLATES=(
+  # coder-service-template
+  # gatekeeper-service-template
+  # gitea-service-template
+  # lgtm-service-template
   ca-service-template
   cni-service-template
   crd-service-template
