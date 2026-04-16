@@ -9,18 +9,28 @@ BUILD_DIR=$(mktemp -d)
 BUILD_ALL=true
 
 BUILD_CLUSTERS=false
+BUILD_PROVIDERS=false
 BUILD_SERVICES=false
 BUILD_TEMPLATES=false
-BUILD_UPSTREAM=false
 
 SPECIFIC_CLUSTERS=()
+SPECIFIC_PROVIDERS=()
 SPECIFIC_SERVICES=()
 SPECIFIC_TEMPLATES=()
-SPECIFIC_UPSTREAM=()
 
 # TODO: accept yaml configuration file to specify charts to build and upload
 
-CLUSTERS=()
+PROVIDER=(
+  # cluster-api-provider-metal3
+  cluster-api-provider-maas
+)
+
+CLUSTERS=(
+  # metal3-hosted-cp
+  # metal3-standalone-cp
+  maas-hosted-cp
+  maas-standalone-cp
+)
 
 SERVICES=(
   # coder
@@ -82,6 +92,20 @@ while [[ $# -gt 0 ]]; do
       BUILD_ALL=true
       shift
       ;;
+    --providers)
+      BUILD_PROVIDERS=true
+      BUILD_ALL=false
+      shift
+      ;;
+    --provider)
+      BUILD_PROVIDERS=true
+      BUILD_ALL=false
+      if [[ $# -gt 1 && ! "$2" =~ ^-- ]]; then
+        SPECIFIC_PROVIDERS+=("$2")
+        shift
+      fi
+      shift
+      ;;
     --clusters)
       BUILD_CLUSTERS=true
       BUILD_ALL=false
@@ -130,7 +154,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--all] [--upstream [name]] [--clusters] [--cluster name] [--services] [--service name] [--templates] [--template name] [--upload]"
+      echo "Usage: $0 [--all] [--providers] [--provider name] [--clusters] [--cluster name] [--services] [--service name] [--templates] [--template name] [--upload]"
       exit 1
       ;;
   esac
@@ -151,6 +175,18 @@ build() {
 }
 
 # Package charts.
+if [[ "$BUILD_ALL" == true || "$BUILD_PROVIDERS" == true ]]; then
+  if [[ ${#SPECIFIC_PROVIDERS[@]} -gt 0 ]]; then
+    for chart in "${SPECIFIC_PROVIDERS[@]}"; do
+      build "provider/${chart}" "${BUILD_DIR}"
+    done
+  elif [[ "$BUILD_ALL" == true || ${#SPECIFIC_PROVIDERS[@]} -eq 0 ]]; then
+    for chart in "${PROVIDER[@]}"; do
+      build "provider/${chart}" "${BUILD_DIR}"
+    done
+  fi
+fi
+
 if [[ "$BUILD_ALL" == true || "$BUILD_CLUSTERS" == true ]]; then
   if [[ ${#SPECIFIC_CLUSTERS[@]} -gt 0 ]]; then
     for chart in "${SPECIFIC_CLUSTERS[@]}"; do
@@ -202,8 +238,19 @@ if [[ "$UPLOAD" == true ]]; then
       fi
     done
 
+    # Check if this is a provider chart
+    is_provider=false
+    for provider in "${PROVIDER[@]}"; do
+      if [[ "${chart_name}" == "${provider}"* ]]; then
+        is_provider=true
+        break
+      fi
+    done
+
     if [[ "${is_template}" == "true" ]]; then
       helm push "${chart}" "${REGISTRY}/servicetemplate"
+    elif [[ "${is_provider}" == "true" ]]; then
+      helm push "${chart}" "${REGISTRY}/provider"
     else
       helm push "${chart}" "${REGISTRY}"
     fi

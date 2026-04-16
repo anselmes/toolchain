@@ -420,5 +420,8 @@ cython_debug/
 .zshrc
 
 # note: PROJECT FILES
+.idea/
+.vscode/
+
 .env
 !.env.example
