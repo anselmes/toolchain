@@ -11,12 +11,10 @@ BUILD_ALL=true
 BUILD_CLUSTERS=false
 BUILD_PROVIDERS=false
 BUILD_SERVICES=false
-BUILD_TEMPLATES=false
 
 SPECIFIC_CLUSTERS=()
 SPECIFIC_PROVIDERS=()
 SPECIFIC_SERVICES=()
-SPECIFIC_TEMPLATES=()
 
 # TODO: accept yaml configuration file to specify charts to build and upload
 
@@ -56,31 +54,6 @@ SERVICES=(
   operator
   pinniped
   vault
-)
-
-TEMPLATES=(
-  # coder-service-template
-  # gatekeeper-service-template
-  # gitea-service-template
-  # lgtm-service-template
-  ca-service-template
-  cni-service-template
-  crd-service-template
-  csi-service-template
-  data-service-template
-  edns-service-template
-  gateway-service-template
-  gwapi-service-template
-  knative-service-template
-  ldap-service-template
-  maas-service-template
-  monitoring-service-template
-  msr-service-template
-  netbox-service-template
-  openstack-service-template
-  operator-service-template
-  pinniped-service-template
-  vault-service-template
 )
 
 mkdir -p "${BUILD_DIR}"
@@ -134,27 +107,13 @@ while [[ $# -gt 0 ]]; do
       fi
       shift
       ;;
-    --templates)
-      BUILD_TEMPLATES=true
-      BUILD_ALL=false
-      shift
-      ;;
-    --template)
-      BUILD_TEMPLATES=true
-      BUILD_ALL=false
-      if [[ $# -gt 1 && ! "$2" =~ ^-- ]]; then
-        SPECIFIC_TEMPLATES+=("$2")
-        shift
-      fi
-      shift
-      ;;
     --upload)
       UPLOAD=true
       shift
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--all] [--providers] [--provider name] [--clusters] [--cluster name] [--services] [--service name] [--templates] [--template name] [--upload]"
+      echo "Usage: $0 [--all] [--providers] [--provider name] [--clusters] [--cluster name] [--services] [--service name] [--upload]"
       exit 1
       ;;
   esac
@@ -211,32 +170,11 @@ if [[ "$BUILD_ALL" == true || "$BUILD_SERVICES" == true ]]; then
   fi
 fi
 
-if [[ "$BUILD_ALL" == true || "$BUILD_TEMPLATES" == true ]]; then
-  if [[ ${#SPECIFIC_TEMPLATES[@]} -gt 0 ]]; then
-    for chart in "${SPECIFIC_TEMPLATES[@]}"; do
-      build "template/${chart}" "${BUILD_DIR}"
-    done
-  elif [[ "$BUILD_ALL" == true || ${#SPECIFIC_TEMPLATES[@]} -eq 0 ]]; then
-    for chart in "${TEMPLATES[@]}"; do
-      build "template/${chart}" "${BUILD_DIR}"
-    done
-  fi
-fi
-
 # Push charts.
 if [[ "$UPLOAD" == true ]]; then
   for chart in "${BUILD_DIR}"/*.tgz; do
     [[ -f "$chart" ]] || continue
     chart_name=$(basename "${chart}" .tgz)
-
-    # Check if this is a template chart
-    is_template=false
-    for template in "${TEMPLATES[@]}"; do
-      if [[ "${chart_name}" == "${template}"* ]]; then
-        is_template=true
-        break
-      fi
-    done
 
     # Check if this is a provider chart
     is_provider=false
@@ -247,10 +185,19 @@ if [[ "$UPLOAD" == true ]]; then
       fi
     done
 
-    if [[ "${is_template}" == "true" ]]; then
-      helm push "${chart}" "${REGISTRY}/servicetemplate"
-    elif [[ "${is_provider}" == "true" ]]; then
+    # Check if this is a cluster chart
+    is_cluster=false
+    for cluster in "${CLUSTERS[@]}"; do
+      if [[ "${chart_name}" == "${cluster}"* ]]; then
+        is_cluster=true
+        break
+      fi
+    done
+
+    if [[ "${is_provider}" == "true" ]]; then
       helm push "${chart}" "${REGISTRY}/provider"
+    elif [[ "${is_cluster}" == "true" ]]; then
+      helm push "${chart}" "${REGISTRY}/cluster"
     else
       helm push "${chart}" "${REGISTRY}"
     fi
