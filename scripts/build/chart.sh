@@ -44,6 +44,8 @@ SERVICES=(
   flux
   gateway
   gwapi
+  headscale
+  kgst
   knative
   ldap
   maas
