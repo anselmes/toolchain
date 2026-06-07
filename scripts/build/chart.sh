@@ -41,6 +41,7 @@ SERVICES=(
   csi
   data
   edns
+  eso
   flux
   gateway
   gwapi
