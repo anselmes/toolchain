@@ -18,17 +18,17 @@ setup_error_handling
 # MARK: Configuration
 
 readonly CACHE_DIR=".cache/swagger-ui"
-readonly OUTPUT_DIR="pkg/gateway/ui"
+readonly OUTPUT_DIR="${1:-pkg/gateway/ui}"
 readonly SWAGGER_UI_REPO="https://github.com/swagger-api/swagger-ui.git"
-readonly SWAGGER_UI_VERSION="${1:-v5.18.2}"
+readonly SWAGGER_UI_VERSION="${2:-5.32.0}"
 
 # MARK: Validation
 
 validate_version() {
   if [[ -z "${SWAGGER_UI_VERSION}" ]]; then
     log_error "Missing Swagger UI version"
-    echo "Usage: $0 [version]" >&2
-    echo "Example: $0 v5.18.2" >&2
+    echo "Usage: $0 [output_dir] [version]" >&2
+    echo "Example: $0 pkg/gateway/ui 5.32.0" >&2
     exit 1
   fi
   log_info "Using Swagger UI version: ${SWAGGER_UI_VERSION}"
