@@ -27,7 +27,7 @@
 #   - U-Boot binaries in build/image/uboot/ structure
 #
 
-set -euo pipefail
+set -eo pipefail
 
 # Color codes for output
 readonly RED='\033[0;31m'
@@ -37,7 +37,8 @@ readonly NC='\033[0m' # No Color
 
 # Global configuration
 readonly DEFAULT_MEMORY_SIZE="8192"
-readonly SCRIPT_NAME="$(basename "$0")"
+
+SCRIPT_NAME="$(basename "$0")"
 
 # TPM directory - will be set when needed
 TPM_DIR=""
@@ -102,7 +103,8 @@ cleanup() {
     log_info "Cleaning up TPM directory: ${TPM_DIR}"
     # Kill swtpm daemon if running
     if [[ -f "${TPM_DIR}/swtpm.pid" ]]; then
-      local swtpm_pid=$(cat "${TPM_DIR}/swtpm.pid" 2>/dev/null || echo "")
+      local swtpm_pid
+      swtpm_pid=$(cat "${TPM_DIR}/swtpm.pid" 2>/dev/null || echo "")
       if [[ -n ${swtpm_pid} ]] && kill -0 "${swtpm_pid}" 2>/dev/null; then
         log_info "Stopping swtpm daemon (PID: ${swtpm_pid})"
         kill "${swtpm_pid}" 2>/dev/null || true
@@ -161,8 +163,11 @@ get_host_arch() {
 #
 get_default_accel() {
   local target_arch="$1"
-  local host_os=$(detect_host_info)
-  local host_arch=$(get_host_arch)
+  local host_os
+  local host_arch
+
+  host_os=$(detect_host_info)
+  host_arch=$(get_host_arch)
 
   if [[ ${target_arch} == "${host_arch}" ]]; then
     case "${host_os}" in
@@ -366,12 +371,15 @@ launch_x86_64() {
   fi
 
   # Launch QEMU with proper argument parsing
+  local common_args
+  common_args="$(get_common_qemu_args "${disk_image}" "${memory_size}" "${network_configs}" "x86_64" "${enable_tpm}")"
+
   exec qemu-system-x86_64 \
     -M q35"${accel_arg}" \
     -cpu "${cpu_type}" \
     -bios "${bios_path}" \
-    $(get_common_qemu_args "${disk_image}" "${memory_size}" "${network_configs}" "x86_64" "${enable_tpm}") \
-    "${additional_args}"
+    "${common_args}" \
+    "${additional_args[@]}"
 }
 
 #
@@ -410,11 +418,14 @@ launch_arm64() {
   fi
 
   # Launch QEMU with proper argument parsing
+  local common_args
+  common_args="$(get_common_qemu_args "${disk_image}" "${memory_size}" "${network_configs}" "arm64" "${enable_tpm}")"
+
   exec qemu-system-aarch64 \
     -M virt"${accel_arg}" \
     -cpu "${cpu_type}" \
     -bios "${bios_path}" \
-    $(get_common_qemu_args "${disk_image}" "${memory_size}" "${network_configs}" "arm64" "${enable_tpm}") \
+    "${common_args}" \
     "${additional_args}"
 }
 
@@ -457,12 +468,15 @@ launch_riscv64() {
   fi
 
   # Launch QEMU with proper argument parsing
+  local common_args
+  common_args="$(get_common_qemu_args "${disk_image}" "${memory_size}" "${network_configs}" "riscv64" "${enable_tpm}")"
+
   exec qemu-system-riscv64 \
     -M virt"${accel_arg}" \
     -cpu "${cpu_type}" \
     -bios "${spl_path}" \
     -device loader,addr=0x80200000,file="${itb_path}" \
-    $(get_common_qemu_args "${disk_image}" "${memory_size}" "${network_configs}" "riscv64" "${enable_tpm}") \
+    "${common_args}" \
     "${additional_args}"
 }
 
@@ -560,7 +574,8 @@ main() {
 
   # Set default architecture if not specified
   if [[ -z ${arch} ]]; then
-    local host_arch=$(get_host_arch)
+    local host_arch
+    host_arch=$(get_host_arch)
     case "${host_arch}" in
     x86_64) arch="x86_64" ;;
     arm64) arch="arm64" ;;
@@ -587,12 +602,17 @@ main() {
     riscv64)
       bios_path="build/image/uboot/riscv64/qemu/u-boot-spl.bin"
       ;;
+    *)
+      log_error "Unsupported architecture: ${arch}"
+      exit 1
+      ;;
     esac
   fi
 
   # Set default CPU type if not specified
   if [[ -z ${cpu_type} ]]; then
-    local host_arch=$(get_host_arch)
+    local host_arch
+    host_arch=$(get_host_arch)
     if [[ ${arch} == "${host_arch}" ]]; then
       cpu_type="host"
     else
@@ -601,7 +621,8 @@ main() {
   fi
 
   # Get default acceleration
-  local accel=$(get_default_accel "${arch}")
+  local accel
+  accel=$(get_default_accel "${arch}")
 
   # Check dependencies
   if [[ ${enable_tpm} == "true" ]]; then
@@ -609,7 +630,8 @@ main() {
   fi
 
   # Build network configuration
-  local network_configs=$(build_network_config "${network_types[@]+${network_types[@]}}")
+  local network_configs
+  network_configs=$(build_network_config "${network_types[@]+${network_types[@]}}")
 
   # Set up TPM resources if enabled
   if [[ ${enable_tpm} == "true" ]]; then
@@ -626,6 +648,10 @@ main() {
     ;;
   riscv64)
     launch_riscv64 "${disk_image}" "${bios_path}" "${cpu_type}" "${memory_size}" "${accel}" "${network_configs}" "${enable_tpm}" "${additional_args[@]+${additional_args[@]}}"
+    ;;
+  *)
+    log_error "Unsupported architecture: ${arch}"
+    return 1
     ;;
   esac
 }

@@ -24,8 +24,14 @@ DISK_SIZE=64
 ADDITIONAL_DISKS=()
 
 # Network flags
-ADD_MANAGEMENT=false
+ADD_LOCAL=false
 ADD_PUBLIC=false
+
+# TCP network options
+ADD_TCP_NETWORK=false
+TCP_NET_TYPE="client"
+TCP_NET_PORT=""
+TCP_NET_ADDRESS="127.0.0.1"
 
 # Cloud-init options
 METADATA_FILE=""
@@ -35,6 +41,9 @@ NETCONFIG_FILE=""
 # Output options
 PRINT_XML=false
 OUTPUT_FILE=""
+
+# Display options
+GRAPHICS="none"
 
 #==============================================================================
 # Helper Functions
@@ -53,8 +62,9 @@ generate_mac() {
 #==============================================================================
 
 MAC_SHARED=$(generate_mac)
-MAC_MANAGEMENT=$(generate_mac)
+MAC_LOCAL=$(generate_mac)
 MAC_PUBLIC=$(generate_mac)
+MAC_TCP=$(generate_mac)
 
 #==============================================================================
 # Command Line Argument Parsing
@@ -82,13 +92,31 @@ while [[ $# -gt 0 ]]; do
       ADDITIONAL_DISKS+=("$2")
       shift 2
       ;;
-    --management)
-      ADD_MANAGEMENT=true
+    --local)
+      ADD_LOCAL=true
       shift
       ;;
     --public)
       ADD_PUBLIC=true
       shift
+      ;;
+    --tcp)
+      ADD_TCP_NETWORK=true
+      # Check if next argument is an explicit type (client|server)
+      if [[ "$2" == "client" || "$2" == "server" ]]; then
+        TCP_NET_TYPE="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --tcp-port)
+      TCP_NET_PORT="$2"
+      shift 2
+      ;;
+    --tcp-address)
+      TCP_NET_ADDRESS="$2"
+      shift 2
       ;;
     --meta-data)
       METADATA_FILE="$2"
@@ -100,6 +128,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --net-config)
       NETCONFIG_FILE="$2"
+      shift 2
+      ;;
+    -g|--graphics)
+      GRAPHICS="$2"
       shift 2
       ;;
     --print)
@@ -129,8 +161,12 @@ STORAGE OPTIONS:
   --add-disk        SIZE    Add additional disk of SIZE GB (repeatable)
 
 NETWORK OPTIONS:
-  --management              Add vmnet-host network (management/isolated)
+  --local                   Add vmnet-host network (local/isolated)
   --public                  Add vmnet-bridge network (public/bridged)
+  --tcp             [TYPE]  Add a TCP network interface, TYPE is client or
+                            server (default: client when enabled)
+  --tcp-port        PORT    TCP network port (required with --tcp)
+  --tcp-address     ADDR    TCP network address (default: 127.0.0.1)
 
   Note: vmnet-shared is always included as the default network
 
@@ -138,6 +174,9 @@ CLOUD-INIT OPTIONS:
   --meta-data       FILE    Cloud-init metadata file
   --user-data       FILE    Cloud-init userdata file
   --net-config      FILE    Cloud-init network-config file
+
+DISPLAY OPTIONS:
+  -g, --graphics            Graphics type, e.g. none, vnc, spice (default: none)
 
 OUTPUT OPTIONS:
   --print [FILE]            Print XML configuration only (don't create VM)
@@ -150,8 +189,10 @@ EXAMPLES:
   $0                                                # Basic VM with defaults
   $0 -n webserver -c 4 -m 16384                     # Custom name and resources
   $0 --add-disk 128 --add-disk 256                  # VM with additional disks
-  $0 --management --public                          # VM with all network types
+  $0 --local --public                               # VM with all network types
   $0 --meta-data meta.yaml --user-data user.yaml    # VM with cloud-init
+  $0 --tcp --tcp-port 10000                         # VM with TCP client network
+  $0 --tcp server --tcp-port 10000                  # VM with TCP server network
 
 EOF
       exit 0
@@ -173,6 +214,7 @@ echo "   Name: ${VM_NAME}"
 echo "   CPUs: ${CPU_COUNT}"
 echo "   Memory: ${MEM_SIZE}MB"
 echo "   Main Disk: ${DISK_SIZE}GB"
+echo "   Graphics: ${GRAPHICS}"
 
 # Build additional disks configuration
 ADDITIONAL_DISK_CONFIG=""
@@ -188,16 +230,29 @@ fi
 echo "   Networks:"
 echo "     - vmnet-shared (${MAC_SHARED})"
 
-NETWORK_CONFIG="-netdev vmnet-shared,id=net0 -device virtio-net-device,netdev=net0,mac=${MAC_SHARED}"
+NETWORK_CONFIG="-netdev vmnet-shared,id=mgmt -device virtio-net-device,netdev=mgmt,mac=${MAC_SHARED}"
 
-if [[ "${ADD_MANAGEMENT}" == "true" ]]; then
-  echo "     - vmnet-host/management (${MAC_MANAGEMENT})"
-  NETWORK_CONFIG="${NETWORK_CONFIG} -netdev vmnet-host,id=net1 -device virtio-net-device,netdev=net1,mac=${MAC_MANAGEMENT}"
+if [[ "${ADD_LOCAL}" == "true" ]]; then
+  echo "     - vmnet-host/local (${MAC_LOCAL})"
+  NETWORK_CONFIG="${NETWORK_CONFIG} -netdev vmnet-host,id=local -device virtio-net-device,netdev=local,mac=${MAC_LOCAL}"
 fi
 
 if [[ "${ADD_PUBLIC}" == "true" ]]; then
   echo "     - vmnet-bridge/public (${MAC_PUBLIC})"
-  NETWORK_CONFIG="${NETWORK_CONFIG} -netdev vmnet-bridge,id=net2 -device virtio-net-device,netdev=net2,mac=${MAC_PUBLIC}"
+  NETWORK_CONFIG="${NETWORK_CONFIG} -netdev vmnet-bridge,id=public -device virtio-net-device,netdev=public,mac=${MAC_PUBLIC}"
+fi
+
+TCP_NETWORK_ARGS=""
+if [[ "${ADD_TCP_NETWORK}" == "true" ]]; then
+  if [[ -z "${TCP_NET_PORT}" ]]; then
+    echo "❌ Error: --tcp-port is required when --tcp is enabled"
+    exit 1
+  fi
+  echo "     - tcp/${TCP_NET_TYPE} (${MAC_TCP}) @ ${TCP_NET_ADDRESS}:${TCP_NET_PORT}"
+  TCP_NETWORK_ARGS=" \\
+  --network type=\"${TCP_NET_TYPE}\",mac=\"${MAC_TCP}\" \\
+  --xml ./devices/interface/source/@address=\"${TCP_NET_ADDRESS}\" \\
+  --xml ./devices/interface/source/@port=\"${TCP_NET_PORT}\""
 fi
 
 echo ""
@@ -240,13 +295,20 @@ echo "📦 Generating VM configuration XML..."
 VIRT_INSTALL_CMD="virt-install \\
   --virt-type=\"${VIRT_TYPE:-hvf}\" \\
   --name=\"${VM_NAME}\" \\
-  --os-type=\"${OS_TYPE:-linux}\" \\
-  --os-variant=\"${OS_VARIANT:-ubuntu24.04}\" \\
-  --ram=\"${MEM_SIZE}\" \\
+  --osinfo=\"${OS_VARIANT:-ubuntu24.04}\" \\
+  --feature gic.version=3 \\
+  --memballoon model=virtio \\
+  --tpm model=tpm-tis,backend.version=2.0 \\
+  --watchdog model=i6300esb,action=reset \\
+  --channel target.name=org.libguestfs.channel.0 \\
+  --channel target.name=org.qemu.guest_agent.0 \\
+  --boot hd,menu=on \\
+  --cpu host-passthrough \\
   --vcpus=\"${CPU_COUNT}\" \\
+  --memory=\"${MEM_SIZE}\" \\
   --disk \"size=${DISK_SIZE}${ADDITIONAL_DISK_CONFIG}\" \\
-  --graphics vnc \\
-  --network none \\
+  --graphics=\"${GRAPHICS}\" \\
+  --network none${TCP_NETWORK_ARGS} \\
   --qemu-commandline=\"-M highmem=on ${NETWORK_CONFIG}\""
 
 # Add cloud-init configuration if provided
@@ -254,9 +316,17 @@ if [[ -n "${CLOUD_INIT_CONFIG}" ]]; then
   VIRT_INSTALL_CMD="${VIRT_INSTALL_CMD} ${CLOUD_INIT_CONFIG}"
 fi
 
-# Add --print-xml if --print flag was provided
+# Add --print-xml if --print flag was provided. --dry-run is required alongside
+# it, otherwise virt-install still creates the storage volume(s) as a side effect.
+# With cloud-init, virt-install defines two XML domains (pre- and post-install);
+# the second is the one we want.
 if [[ "${PRINT_XML}" == "true" ]]; then
-  VIRT_INSTALL_CMD="${VIRT_INSTALL_CMD} --print-xml"
+  VIRT_INSTALL_CMD="${VIRT_INSTALL_CMD} --dry-run"
+  if [[ -n "${CLOUD_INIT_CONFIG}" ]]; then
+    VIRT_INSTALL_CMD="${VIRT_INSTALL_CMD} --print-xml 2"
+  else
+    VIRT_INSTALL_CMD="${VIRT_INSTALL_CMD} --print-xml"
+  fi
 fi
 
 # Execute the command

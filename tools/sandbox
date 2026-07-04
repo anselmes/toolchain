@@ -15,10 +15,11 @@
 # Dependencies: Docker
 #
 
-set -euo pipefail
+set -eo pipefail
 
 # Configuration
-readonly SCRIPT_NAME=$(basename "$0")
+SCRIPT_NAME=$(basename "$0")
+
 readonly CONTAINER_NAME="sandbox"
 readonly CONTAINER_IMAGE="ghcr.io/labsonline/devcontainer/lang/rust:24.04"
 readonly WORKSPACE_PATH="${HOME}/workspace"
@@ -98,7 +99,9 @@ container_exists() {
 }
 
 container_running() {
-  [[ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" == "true" ]]
+  local is_running
+  is_running=$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)
+  [[ "${is_running}" == "true" ]]
 }
 
 #
@@ -108,6 +111,7 @@ init_sandbox() {
   log_info "Checking Docker availability..."
   check_docker
 
+  # shellcheck disable=SC2310
   if container_exists; then
     if container_running; then
       log_warn "Sandbox container '${CONTAINER_NAME}' is already running"
@@ -146,6 +150,7 @@ init_sandbox() {
   log_info "Waiting for container to be ready..."
   sleep 3
 
+  # shellcheck disable=SC2310
   if container_running; then
     log_info "Sandbox environment created successfully"
   else
@@ -160,6 +165,7 @@ init_sandbox() {
 enter_shell() {
   check_docker
 
+  # shellcheck disable=SC2310
   if ! container_running; then
     log_error "Sandbox container is not running. Use --init to create it first."
     exit 1
@@ -177,6 +183,7 @@ execute_command() {
 
   check_docker
 
+  # shellcheck disable=SC2310
   if ! container_running; then
     log_error "Sandbox container is not running. Use --init to create it first."
     exit 1
@@ -192,6 +199,7 @@ execute_command() {
 cleanup_sandbox() {
   check_docker
 
+  # shellcheck disable=SC2310
   if ! container_exists; then
     log_warn "No sandbox container found to clean up"
     return 0
@@ -199,6 +207,7 @@ cleanup_sandbox() {
 
   log_info "Cleaning up sandbox environment..."
 
+  # shellcheck disable=SC2310
   if container_running; then
     docker container stop "${CONTAINER_NAME}" &> /dev/null || true
     log_info "Sandbox container stopped successfully"
