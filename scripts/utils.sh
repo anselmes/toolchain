@@ -126,7 +126,7 @@ createvol() {
 # one or more bastion hosts. Refuses to start if the local port is already
 # listening, so re-running this is safe.
 #
-# Usage: porttunnel -l <local_port> -h <remote_host> -p <remote_port> -u <user> [-b <ssh_dest>] [-j <jump_hosts>] [-i <ssh_key>]
+# Usage: porttunnel -l <local_port> -h <remote_host> -p <remote_port> -u <user> [-b <ssh_dest>] [-j <jump_hosts>] [-i <ssh_key>] [-o <ssh_option>]...
 #
 # Arguments:
 #   -l local_port: The local port to bind.
@@ -138,6 +138,7 @@ createvol() {
 #   -j jump_hosts: Comma-separated bastion chain to traverse before reaching
 #                  ssh_dest (passed to ssh -J). Optional.
 #   -i ssh_key: Path to the private key to authenticate with. Optional.
+#   -o ssh_option: An ssh_config option (passed to ssh -o). Repeatable. Optional.
 #
 # Example:
 #   # ssh -f -J outer,inner -L 8443:target:443 -N alice@target -i ~/.ssh/id_rsa
@@ -145,11 +146,15 @@ createvol() {
 #
 #   # ssh -i ~/.ssh/id_rsa -fN -L 6443:target:6443 alice@bastion
 #   porttunnel -l 6443 -h target -p 6443 -u alice -b bastion -i ~/.ssh/id_rsa
+#
+#   # ssh -f -N -L 6443:target:6443 -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o StrictHostKeyChecking=no alice@bastion
+#   porttunnel -l 6443 -h target -p 6443 -u alice -b bastion -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o StrictHostKeyChecking=no
 porttunnel() {
   local OPTIND opt
   local local_port="" remote_host="" remote_port="" user="" dest="" jump="" key=""
+  local ssh_opts=()
 
-  while getopts "l:h:p:u:b:j:i:" opt; do
+  while getopts "l:h:p:u:b:j:i:o:" opt; do
     case "${opt}" in
       l) local_port="${OPTARG}" ;;
       h) remote_host="${OPTARG}" ;;
@@ -158,8 +163,9 @@ porttunnel() {
       b) dest="${OPTARG}" ;;
       j) jump="${OPTARG}" ;;
       i) key="${OPTARG}" ;;
+      o) ssh_opts+=("${OPTARG}") ;;
       *)
-        echo "usage: porttunnel -l <local_port> -h <remote_host> -p <remote_port> -u <user> [-b <ssh_dest>] [-j <jump_hosts>] [-i <ssh_key>]"
+        echo "usage: porttunnel -l <local_port> -h <remote_host> -p <remote_port> -u <user> [-b <ssh_dest>] [-j <jump_hosts>] [-i <ssh_key>] [-o <ssh_option>]..."
         return 1
         ;;
     esac
@@ -179,6 +185,10 @@ porttunnel() {
   local cmd=(ssh -f -N -L "${local_port}:${remote_host}:${remote_port}")
   [[ -n ${key} ]] && cmd+=(-i "${key}")
   [[ -n ${jump} ]] && cmd+=(-J "${jump}")
+  local ssh_opt
+  for ssh_opt in "${ssh_opts[@]}"; do
+    cmd+=(-o "${ssh_opt}")
+  done
   cmd+=("${user}@${dest}")
 
   "${cmd[@]}"
