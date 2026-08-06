@@ -35,6 +35,7 @@ SERVICES=(
   # gatekeeper
   # gitea
   # lgtm
+  aistor
   ca
   ccm
   cni
@@ -52,6 +53,7 @@ SERVICES=(
   maas
   monitoring
   msr
+  netbird
   netbox
   openstack
   operator
