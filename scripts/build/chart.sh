@@ -34,7 +34,7 @@ SERVICES=(
   # coder
   # gatekeeper
   # gitea
-  # lgtm
+  # sonarqube
   aistor
   ca
   ccm
@@ -43,6 +43,7 @@ SERVICES=(
   data
   edns
   eso
+  fleet
   flux
   gateway
   gwapi
@@ -58,6 +59,7 @@ SERVICES=(
   openstack
   operator
   pinniped
+  semaphore
   vault
 )
 
