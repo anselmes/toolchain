@@ -34,7 +34,11 @@ SERVICES=(
   # coder
   # gatekeeper
   # gitea
+  # keycloak
+  # kubevirt
+  # nico
   # sonarqube
+  # temporal
   aistor
   ca
   ccm

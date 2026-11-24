@@ -1,0 +1,239 @@
+#!/usr/bin/env -S uv run --script
+# SPDX-License-Identifier: GPL-3.0
+# Copyright (c) 2026 Schubert Anselme <schubert@anselm.es>
+#
+# /// script
+# requires-python = ">=3.14"
+# dependencies = []
+# ///
+"""Re-sign every commit of a stack of branches with your own key, then push it.
+
+Commits made in a Claude Code cloud session are signed with the session's key, so on
+GitHub they read "Unverified" (committer is you) or "Partially verified" (author is
+you). This rewrites the stack in one pass so that you are the committer — and,
+with --reset-author, the author — and every commit carries your signature.
+
+The file contents of every branch are checked to be unchanged before anything is
+pushed, and each branch is pushed on its own, bottom-up, with a lease on the commit
+it replaces. One ref per push keeps within "max N refs per push" rulesets and gives
+each push event its own commit list, which push-triggered linters need.
+
+Usage:
+  git resign-stack                         # branches from `gh stack view --json`
+  git resign-stack --pattern 'feature/x*'  # remote branches matching a glob
+  git resign-stack a b c --signoff --yes   # explicit branches, add sign-offs, push
+
+Requires git 2.38+ (rebase --update-refs) and a working signing setup
+(user.signingkey, gpg.format, and for SSH keys gpg.ssh.allowedSignersFile).
+"""
+
+import argparse
+import fnmatch
+import json
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+
+
+class ResignError(Exception):
+  """A precondition or check failed; the message says what and how to recover."""
+
+
+@dataclass(frozen=True)
+class Branch:
+  name: str
+  old_tip: str
+  tree: str
+
+
+def git(*args: str, check: bool = True) -> str:
+  result = subprocess.run(["git", *args], capture_output=True, text=True)
+  if check and result.returncode != 0:
+    raise ResignError(f"git {' '.join(args)} failed:\n{result.stderr.strip()}")
+  return result.stdout.strip()
+
+
+def succeeds(*args: str) -> bool:
+  return subprocess.run(["git", *args], capture_output=True).returncode == 0
+
+
+def require_git_version() -> None:
+  version = git("version").split()[2]
+  parts = tuple(int(p) for p in version.split(".")[:2] if p.isdigit())
+  if parts < (2, 38):
+    raise ResignError(f"git {version} is too old: rebase --update-refs needs 2.38+")
+
+
+def require_clean_worktree() -> None:
+  if git("status", "--porcelain", "--untracked-files=no"):
+    raise ResignError("the worktree has uncommitted changes; commit or stash them first")
+  if succeeds("rev-parse", "-q", "--verify", "REBASE_HEAD"):
+    raise ResignError("a rebase is in progress; finish or abort it first")
+
+
+def require_signing_key() -> None:
+  fmt = git("config", "--get", "gpg.format", check=False) or "openpgp"
+  key = git("config", "--get", "user.signingkey", check=False)
+  if fmt == "ssh" and not key:
+    raise ResignError("gpg.format is ssh but user.signingkey is not set")
+
+
+def default_base(remote: str) -> str:
+  head = git("symbolic-ref", "-q", "--short", f"refs/remotes/{remote}/HEAD", check=False)
+  return head or f"{remote}/main"
+
+
+def stack_branches_from_gh() -> list[str]:
+  if not shutil.which("gh"):
+    raise ResignError("no branches given, and gh is not installed to read the stack")
+  result = subprocess.run(["gh", "stack", "view", "--json"], capture_output=True, text=True)
+  if result.returncode != 0:
+    raise ResignError(f"gh stack view failed; pass branches or --pattern:\n{result.stderr.strip()}")
+  stack = json.loads(result.stdout)
+  return [b["name"] for b in stack["branches"] if not b.get("isMerged") and not b.get("isQueued")]
+
+
+def remote_branches_matching(remote: str, pattern: str) -> list[str]:
+  prefix = f"refs/remotes/{remote}/"
+  refs = git("for-each-ref", "--format=%(refname)", prefix).splitlines()
+  return [r.removeprefix(prefix) for r in refs if r != f"{prefix}HEAD" and fnmatch.fnmatch(r.removeprefix(prefix), pattern)]
+
+
+def order_as_stack(remote: str, names: list[str]) -> list[str]:
+  """Orders branches bottom-up and checks that each one sits on the one below it."""
+  def depth(name: str) -> int:
+    return int(git("rev-list", "--count", f"{remote}/{name}"))
+
+  ordered = sorted(names, key=depth)
+  for lower, upper in zip(ordered, ordered[1:]):
+    if not succeeds("merge-base", "--is-ancestor", f"{remote}/{lower}", f"{remote}/{upper}"):
+      raise ResignError(f"{upper} does not contain {lower}: the branches are not one linear stack")
+  return ordered
+
+
+def snapshot(remote: str, names: list[str]) -> list[Branch]:
+  return [Branch(n, git("rev-parse", f"{remote}/{n}"), git("rev-parse", f"{remote}/{n}^{{tree}}")) for n in names]
+
+
+def restore(branches: list[Branch], original_ref: str) -> None:
+  subprocess.run(["git", "rebase", "--abort"], capture_output=True)
+  git("checkout", "-q", "--detach", branches[0].old_tip)
+  for b in branches:
+    git("branch", "-q", "-f", b.name, b.old_tip)
+  git("checkout", "-q", original_ref, check=False)
+
+
+def rewrite(branches: list[Branch], base: str, name: str, email: str, signoff: bool, reset_author: bool) -> None:
+  top = branches[-1]
+  git("checkout", "-q", "--detach", top.old_tip)
+  for b in branches:
+    git("branch", "-q", "-f", b.name, b.old_tip)
+  git("checkout", "-q", top.name)
+
+  args = ["-c", f"user.name={name}", "-c", f"user.email={email}", "-c", "commit.gpgsign=true",
+          "rebase", "--force-rebase", "--update-refs"]
+  if signoff:
+    args.append("--signoff")
+  if reset_author:
+    args += ["--exec", "git commit --amend --no-edit --no-verify --reset-author --allow-empty -q"]
+  args.append(git("merge-base", base, top.old_tip))
+  git(*args)
+
+
+def verify(branches: list[Branch], base: str, name: str, email: str, reset_author: bool, local_verify: bool) -> None:
+  problems: list[str] = []
+  for b in branches:
+    if git("rev-parse", f"{b.name}^{{tree}}") != b.tree:
+      problems.append(f"file contents changed on {b.name}")
+    if git("rev-parse", b.name) == b.old_tip:
+      problems.append(f"{b.name} was not rewritten")
+
+  top = branches[-1].name
+  for lower, upper in zip(branches, branches[1:]):
+    if not succeeds("merge-base", "--is-ancestor", lower.name, upper.name):
+      problems.append(f"{upper.name} no longer contains {lower.name}")
+  for line in git("log", "--format=%H|%an <%ae>|%cn <%ce>|%G?", f"{git('merge-base', base, top)}..{top}").splitlines():
+    sha, author, committer, status = line.split("|")
+    if committer != f"{name} <{email}>":
+      problems.append(f"{sha[:12]} committer is {committer}")
+    if reset_author and author != f"{name} <{email}>":
+      problems.append(f"{sha[:12]} author is {author}")
+    if "gpgsig" not in git("cat-file", "commit", sha).split("\n\n", 1)[0]:
+      problems.append(f"{sha[:12]} is not signed")
+    elif local_verify and status != "G":
+      problems.append(f"{sha[:12]} signature status {status} (want G; see gpg.ssh.allowedSignersFile)")
+
+  if problems:
+    raise ResignError("verification failed:\n  " + "\n  ".join(problems))
+
+
+def push(branches: list[Branch], remote: str) -> None:
+  for b in branches:
+    print(f"pushing {b.name}")
+    result = subprocess.run(["git", "push", "--quiet", f"--force-with-lease={b.name}:{b.old_tip}", remote, b.name])
+    if result.returncode != 0:
+      raise ResignError(f"push of {b.name} was rejected; branches below it are already pushed. Fix it and re-run.")
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+  parser.add_argument("branches", nargs="*", help="branches of the stack, in any order (default: gh stack)")
+  parser.add_argument("--pattern", help="take every remote branch matching this glob instead")
+  parser.add_argument("--remote", default="origin")
+  parser.add_argument("--base", help="the trunk the stack sits on (default: <remote>/HEAD)")
+  parser.add_argument("--signoff", action="store_true", help="add a Signed-off-by trailer where missing")
+  parser.add_argument("--reset-author", action="store_true", help="make you the author as well as the committer")
+  parser.add_argument("--no-local-verify", action="store_true", help="accept signatures git cannot check locally")
+  parser.add_argument("--dry-run", action="store_true", help="rewrite and verify, then restore without pushing")
+  parser.add_argument("--yes", action="store_true", help="push without asking")
+  args = parser.parse_args()
+
+  try:
+    require_git_version()
+    require_clean_worktree()
+    require_signing_key()
+    name = git("config", "--get", "user.name")
+    email = git("config", "--get", "user.email")
+    git("fetch", "--quiet", args.remote)
+    base = args.base or default_base(args.remote)
+
+    names = args.branches or (remote_branches_matching(args.remote, args.pattern) if args.pattern else stack_branches_from_gh())
+    if not names:
+      raise ResignError("no branches matched")
+    branches = snapshot(args.remote, order_as_stack(args.remote, names))
+    print(f"{len(branches)} branches on {base}, top {branches[-1].name}; signing as {name} <{email}>")
+  except ResignError as error:
+    print(f"error: {error}", file=sys.stderr)
+    return 1
+
+  original = git("symbolic-ref", "-q", "--short", "HEAD", check=False) or git("rev-parse", "HEAD")
+  try:
+    rewrite(branches, base, name, email, args.signoff, args.reset_author)
+    verify(branches, base, name, email, args.reset_author, not args.no_local_verify)
+  except ResignError as error:
+    restore(branches, original)
+    print(f"error: {error}\nlocal branches restored; nothing was pushed", file=sys.stderr)
+    return 1
+
+  count = git("rev-list", "--count", f"{git('merge-base', base, branches[-1].name)}..{branches[-1].name}")
+  print(f"verified: {count} commits re-signed, every branch's files unchanged")
+  if args.dry_run:
+    restore(branches, original)
+    print("dry run: local branches restored")
+    return 0
+  if not args.yes and input(f"push {len(branches)} branches to {args.remote}, one at a time? [y/N] ").strip().lower() != "y":
+    restore(branches, original)
+    print("not pushed: local branches restored")
+    return 0
+  try:
+    push(branches, args.remote)
+  except ResignError as error:
+    print(f"error: {error}", file=sys.stderr)
+    return 1
+  print("done")
+  return 0
+
+
+if __name__ == "__main__":
+  sys.exit(main())
